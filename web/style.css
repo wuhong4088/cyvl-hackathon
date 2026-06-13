@@ -274,6 +274,11 @@ html, body {
 }
 
 /* ── Weather Chart ── */
+.chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 130px;
+}
 .chart-note {
   font-size: 9.5px;
   color: var(--text-muted);
@@ -546,3 +551,271 @@ html, body {
 
 /* MapLibre attribution */
 .maplibregl-ctrl-attrib { display: none !important; }
+
+/* ─── Season Switch ─────────────────────────────────────────────── */
+.season-switch {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  flex-shrink: 0;
+}
+.season-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 100px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+.season-btn:hover { color: var(--text-primary); }
+.season-btn.active[data-season="winter"] {
+  background: linear-gradient(135deg, rgba(61,139,255,0.9), rgba(0,229,255,0.8));
+  color: #061018;
+}
+.season-btn.active[data-season="summer"] {
+  background: linear-gradient(135deg, rgba(255,109,0,0.95), rgba(255,213,79,0.9));
+  color: #1a0e00;
+}
+
+/* ─── Section hint ──────────────────────────────────────────────── */
+.section-hint {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin: -4px 0 10px;
+  line-height: 1.4;
+}
+
+/* ─── Selected Site Cards ───────────────────────────────────────── */
+.selsite-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 11px 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  opacity: 0.6;
+}
+.selsite-card:hover { border-color: var(--border-bright); transform: translateY(-1px); }
+.selsite-card.active {
+  opacity: 1;
+  border-color: var(--border-bright);
+  box-shadow: var(--shadow-sm);
+}
+.selsite-head { display: flex; align-items: center; gap: 8px; }
+.selsite-season { font-size: 16px; }
+.selsite-titles { flex: 1; min-width: 0; }
+.selsite-kind {
+  display: block; font-size: 11px; font-weight: 700; color: var(--text-primary);
+}
+.selsite-addr {
+  display: block; font-size: 10px; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.selsite-risk { font-size: 17px; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
+.selsite-factors { margin: 10px 0 8px; display: flex; flex-direction: column; gap: 5px; }
+.sf-row { display: grid; grid-template-columns: 108px 1fr 22px; align-items: center; gap: 7px; }
+.sf-label { font-size: 9.5px; color: var(--text-secondary); white-space: nowrap; }
+.sf-bar-wrap { background: rgba(255,255,255,0.06); border-radius: 4px; height: 4px; overflow: hidden; }
+.sf-bar { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #3d8bff, #00e5ff); }
+body[data-season="summer"] .sf-bar { background: linear-gradient(90deg, #ff6d00, #ffd54f); }
+.sf-pct { font-size: 9.5px; font-weight: 600; color: var(--text-secondary); text-align: right; }
+.selsite-geom {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  padding-top: 8px; border-top: 1px solid var(--border);
+  font-size: 10px; color: var(--text-secondary);
+}
+
+/* Active season tints the popup factor bars too */
+body[data-season="summer"] .factor-bar { background: linear-gradient(90deg, #ff6d00, #ffd54f); }
+
+/* ─── Legend separator ──────────────────────────────────────────── */
+.legend-sep { height: 1px; background: var(--border); margin: 6px 0; }
+
+/* ─── Mobile Drag Handle (hidden by default on desktop) ─────────── */
+.mobile-handle {
+  display: none;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  flex-shrink: 0;
+  touch-action: none;   /* let JS own the drag gesture instead of scrolling */
+}
+.mobile-handle .handle-bar {
+  width: 36px;
+  height: 4px;
+  background: var(--text-muted);
+  border-radius: 2px;
+  transition: background 0.2s;
+}
+.mobile-handle:hover .handle-bar {
+  background: var(--text-secondary);
+}
+
+/* ─── Mobile Responsive Design (<= 768px) ───────────────────────── */
+@media (max-width: 768px) {
+  :root {
+    --topbar-h: 50px;
+    --sidebar-h: 70vh;
+  }
+
+  body, html {
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Simplify Top Bar */
+  .topbar {
+    padding: 0 10px;
+    gap: 10px;
+    justify-content: space-between;
+  }
+  /* Pills don't fit in the cramped topbar — float them as a compact,
+     horizontally-scrollable strip under the topbar (top-left of the map). */
+  .topbar-pills {
+    display: flex;
+    position: fixed;
+    top: calc(var(--topbar-h) + 8px);
+    left: 10px;
+    max-width: calc(100vw - 150px);   /* keep clear of the top-right legend */
+    z-index: 1002;
+    gap: 6px;
+    flex: none;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .topbar-pills::-webkit-scrollbar { display: none; }
+  .topbar-pills .pill {
+    font-size: 10px;
+    padding: 3px 9px;
+    white-space: nowrap;
+    background: rgba(10, 12, 18, 0.85);
+    backdrop-filter: blur(8px);
+    box-shadow: var(--shadow-sm);
+  }
+  .topbar-weather {
+    display: none; /* Hide weather info on smaller mobile views */
+  }
+  .brand-sub {
+    display: none; /* Hide subtitle to keep brand clean */
+  }
+  .topbar-brand {
+    gap: 8px;
+  }
+  .brand-name {
+    font-size: 14px;
+  }
+  .brand-icon {
+    width: 28px; height: 28px;
+  }
+  .brand-icon svg { width: 14px; height: 14px; }
+  .season-switch {
+    padding: 2px;
+  }
+  .season-btn {
+    font-size: 10.5px;
+    padding: 4px 10px;
+  }
+
+  /* Stack Layout & Map full screen */
+  .layout {
+    flex-direction: column;
+    height: 100vh;
+    position: relative;
+    padding-top: var(--topbar-h);
+  }
+
+  .map-container {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0; left: 0; bottom: 0; right: 0;
+    z-index: 1;
+  }
+
+  /* Push MapLibre's top-right zoom controls below the fixed topbar */
+  .maplibregl-ctrl-top-right {
+    top: calc(var(--topbar-h) + 6px);
+  }
+
+  /* Floating Legend — moved to the LEFT (under the pills strip) so it no
+     longer sits on top of the map's top-right zoom (+/−) controls. */
+  .map-legend {
+    top: calc(var(--topbar-h) + 44px);
+    left: 10px;
+    right: auto;
+    bottom: auto;
+    padding: 8px 10px;
+    min-width: 110px;
+    max-width: 45vw;
+    background: rgba(10, 12, 18, 0.9);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+    max-height: 45vh;
+    overflow-y: auto;
+  }
+  .legend-title {
+    font-size: 8.5px;
+    margin-bottom: 4px;
+  }
+  .legend-item {
+    font-size: 9.5px;
+    margin-bottom: 3px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+  }
+
+  /* Bottom Sheet Sidebar */
+  .sidebar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    width: 100%;
+    height: var(--sidebar-h);
+    z-index: 1005;
+    background: rgba(17, 21, 32, 0.95);
+    backdrop-filter: blur(20px);
+    border-right: none;
+    border-top: 1px solid var(--border-bright);
+    border-top-left-radius: var(--radius-lg);
+    border-top-right-radius: var(--radius-lg);
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.6);
+    transform: translateY(0);
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Show mobile drag handle */
+  .mobile-handle {
+    display: flex;
+    border-top-left-radius: var(--radius-lg);
+    border-top-right-radius: var(--radius-lg);
+  }
+
+  /* Collapsed state (shows only drag handle + small title header) */
+  .sidebar.collapsed {
+    transform: translateY(calc(var(--sidebar-h) - 44px));
+  }
+
+  .sidebar-section {
+    padding: 12px 14px;
+  }
+}
+
+/* ─── Ultra Small Screen Adaptations (<= 400px) ─────────────────── */
+@media (max-width: 400px) {
+  .brand-name {
+    display: none; /* Only show icon on extremely small screens */
+  }
+}

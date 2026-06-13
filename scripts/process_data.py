@@ -1,288 +1,43 @@
 #!/usr/bin/env python3
-"""
-SafeRoute AI — Data Processing Pipeline
-Reads Cyvl Point Cloud data (trees + pavements), fetches historical weather,
-and computes Black Ice Risk scores for Somerville, MA.
-"""
-
 import json
-import struct
 import math
 import ssl
 import urllib.request
 import urllib.parse
+from pathlib import Path
+import zipfile
+import tempfile
+import geopandas as gpd
 
-# macOS often needs a custom SSL context
 _SSL_CTX = ssl.create_default_context()
 _SSL_CTX.check_hostname = False
 _SSL_CTX.verify_mode = ssl.CERT_NONE
-from pathlib import Path
-
-import pandas as pd
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 BASE = Path(__file__).parent.parent
-ASSETS_PARQUET = BASE / "downloads" / "604dc248eac474f2d7498ba9_aboveGroundAssets.parquet"
-PAVEMENTS_PARQUET = BASE / "downloads" / "19f11df61df2e8fc86f70320_pavements.parquet"
 DATA_DIR = BASE / "data"
-DATA_DIR.mkdir(exist_ok=True)
+DOWNLOAD_DIR = DATA_DIR / "download"
+ZIP_PATH = DOWNLOAD_DIR / "drive-download-20260613T191614Z-3-001.zip"
 
-# ─── WKB Geometry Parser ──────────────────────────────────────────────────────
-def parse_wkb_point(wkb_bytes):
-    """Parse a WKB (Well-Known Binary) Point into (lon, lat)."""
-    try:
-        byte_order = wkb_bytes[0]
-        if byte_order == 1:  # little-endian
-            x = struct.unpack_from("<d", wkb_bytes, 5)[0]
-            y = struct.unpack_from("<d", wkb_bytes, 13)[0]
-            return x, y  # lon, lat
-    except Exception:
-        pass
-    return None, None
+LON_MIN, LON_MAX = -72.0, -70.0
+LAT_MIN, LAT_MAX = 42.0, 43.0
 
+OBSTACLE_TYPES = {
+    "UTILITY_POLE": "pole",
+    "TRAFFIC_SIGNAL_POLE": "signal_pole",
+    "HYDRANT": "hydrant",
+    "LUMINARIES": "luminaire",
+    "CATCH_BASIN": "catch_basin",
+}
+TRANSIT_TYPES = {
+    "STAND_ALONE_PEDESTRIAN_HEAD": "ped_head",
+    "PEDESTRIAN_PUSH_BUTTON": "push_button",
+}
 
-def parse_wkb_linestring(wkb_bytes):
-    """Parse a WKB LineString and return centroid (lon, lat)."""
-    try:
-        byte_order = wkb_bytes[0]
-        if byte_order == 1:  # little-endian
-            geom_type = struct.unpack_from("<I", wkb_bytes, 1)[0]
-            if geom_type == 2:  # LineString
-                n_points = struct.unpack_from("<I", wkb_bytes, 5)[0]
-                lons, lats = [], []
-                offset = 9
-                for _ in range(n_points):
-                    x = struct.unpack_from("<d", wkb_bytes, offset)[0]
-                    y = struct.unpack_from("<d", wkb_bytes, offset + 8)[0]
-                    lons.append(x)
-                    lats.append(y)
-                    offset += 16
-                return sum(lons) / len(lons), sum(lats) / len(lats)
-    except Exception:
-        pass
-    return None, None
+def in_bounds(lon, lat):
+    return lon is not None and LON_MIN < lon < LON_MAX and LAT_MIN < lat < LAT_MAX
 
-
-# ─── Step 1: Process Trees ────────────────────────────────────────────────────
-def process_trees():
-    print("📍 Processing tree Point Cloud data...")
-    df = pd.read_parquet(ASSETS_PARQUET)
-    trees = df[df["asset_type"] == "TREE"].copy()
-    print(f"   Found {len(trees)} trees")
-
-    features = []
-    for _, row in trees.iterrows():
-        geom = row["geometry"]
-        if geom is None:
-            continue
-        lon, lat = parse_wkb_point(geom)
-        if lon is None or not (-72 < lon < -70) or not (42 < lat < 43):
-            continue
-
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [lon, lat]},
-            "properties": {
-                "feature_id": str(row.get("feature_id", "")),
-                "asset_type": "TREE",
-                "image_url": str(row.get("image_url", "")),
-                "neighborhood": str(row.get("__neighborhoods", "")),
-            },
-        })
-
-    out = {"type": "FeatureCollection", "features": features}
-    path = DATA_DIR / "trees.geojson"
-    path.write_text(json.dumps(out))
-    print(f"   ✅ Saved {len(features)} trees → {path}")
-    return features
-
-
-# ─── Step 2: Process Pavements ───────────────────────────────────────────────
-def process_pavements():
-    print("🛣️  Processing pavement data...")
-    df = pd.read_parquet(PAVEMENTS_PARQUET)
-    print(f"   Found {len(df)} pavement segments")
-
-    features = []
-    for _, row in df.iterrows():
-        geom = row["geometry"]
-        if geom is None:
-            continue
-
-        # Try both point and linestring
-        lon, lat = None, None
-        if isinstance(geom, bytes):
-            byte_order = geom[0]
-            if byte_order == 1:
-                geom_type = struct.unpack_from("<I", geom, 1)[0]
-                if geom_type == 1:
-                    lon, lat = parse_wkb_point(geom)
-                elif geom_type == 2:
-                    lon, lat = parse_wkb_linestring(geom)
-
-        # Fallback to lat/lon columns
-        if lon is None:
-            try:
-                lat_v = row.get("lat")
-                lon_v = row.get("lon")
-                if lat_v is not None and lon_v is not None:
-                    lat = float(str(lat_v).strip("[]").split(",")[0])
-                    lon = float(str(lon_v).strip("[]").split(",")[0])
-            except Exception:
-                pass
-
-        if lon is None or not (-72 < lon < -70) or not (42 < lat < 43):
-            continue
-
-        score = row.get("score")
-        try:
-            score = float(score)
-        except (TypeError, ValueError):
-            score = 50.0
-
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [lon, lat]},
-            "properties": {
-                "inspect_id": str(row.get("inspect_id", "")),
-                "address": str(row.get("address_st", "")),
-                "pci_score": score,
-                "label": str(row.get("label", "")),
-                "length_ft": float(row.get("length_ft") or 0),
-                "area_sqft": float(row.get("area_sqft") or 0),
-            },
-        })
-
-    out = {"type": "FeatureCollection", "features": features}
-    path = DATA_DIR / "pavements.geojson"
-    path.write_text(json.dumps(out))
-    print(f"   ✅ Saved {len(features)} pavement segments → {path}")
-    return features
-
-
-# ─── Step 3: Fetch Historical Weather (Nov 17–24, 2025) ──────────────────────
-def fetch_weather():
-    """
-    Fetch historical weather for Somerville, MA during the scan period.
-    Data collection was Nov 17–24, 2025 — actual winter conditions!
-    Uses Open-Meteo (free, no API key required).
-    """
-    print("🌡️  Fetching historical weather (Nov 17-24, 2025, Somerville MA)...")
-
-    # Somerville, MA centroid
-    lat, lon = 42.3876, -71.0995
-    params = {
-        "latitude": lat,
-        "longitude": lon,
-        "start_date": "2025-11-17",
-        "end_date": "2025-11-24",
-        "hourly": "temperature_2m,relative_humidity_2m,precipitation,snowfall,wind_speed_10m",
-        "temperature_unit": "celsius",
-        "timezone": "America/New_York",
-    }
-    url = "https://archive-api.open-meteo.com/v1/archive?" + urllib.parse.urlencode(params)
-
-    try:
-        with urllib.request.urlopen(url, timeout=15, context=_SSL_CTX) as resp:
-            data = json.loads(resp.read())
-
-        hourly = data["hourly"]
-        times = hourly["time"]
-        temps = hourly["temperature_2m"]
-        humids = hourly["relative_humidity_2m"]
-        precips = hourly["precipitation"]
-        snowfalls = hourly["snowfall"]
-        winds = hourly["wind_speed_10m"]
-
-        # Compute daily averages and pick "worst" day for black ice
-        daily = {}
-        for i, t in enumerate(times):
-            day = t[:10]
-            if day not in daily:
-                daily[day] = {"temps": [], "humids": [], "precips": [], "snowfalls": [], "winds": []}
-            daily[day]["temps"].append(temps[i] or 0)
-            daily[day]["humids"].append(humids[i] or 0)
-            daily[day]["precips"].append(precips[i] or 0)
-            daily[day]["snowfalls"].append(snowfalls[i] or 0)
-            daily[day]["winds"].append(winds[i] or 0)
-
-        summary = []
-        for day, vals in sorted(daily.items()):
-            avg_temp = sum(vals["temps"]) / len(vals["temps"])
-            avg_humid = sum(vals["humids"]) / len(vals["humids"])
-            total_precip = sum(vals["precips"])
-            total_snow = sum(vals["snowfalls"])
-            avg_wind = sum(vals["winds"]) / len(vals["winds"])
-            min_temp = min(vals["temps"])
-
-            # Black ice risk factor from weather
-            w_risk = 0.0
-            if avg_temp <= 4:
-                w_risk += 0.4
-            if avg_temp <= 2:
-                w_risk += 0.3
-            if min_temp <= 0:
-                w_risk += 0.2
-            if total_precip > 0:
-                w_risk += 0.15
-            if total_snow > 0:
-                w_risk += 0.15
-            if avg_humid > 75:
-                w_risk += 0.1
-            w_risk = min(1.0, w_risk)
-
-            summary.append({
-                "date": day,
-                "avg_temp_c": round(avg_temp, 1),
-                "min_temp_c": round(min_temp, 1),
-                "avg_humidity": round(avg_humid, 1),
-                "total_precip_mm": round(total_precip, 2),
-                "total_snow_cm": round(total_snow, 2),
-                "avg_wind_kmh": round(avg_wind, 1),
-                "weather_risk": round(w_risk, 3),
-            })
-
-        # Overall weather risk = average across all days
-        overall_risk = sum(d["weather_risk"] for d in summary) / len(summary)
-
-        result = {
-            "location": "Somerville, MA",
-            "period": "2025-11-17 to 2025-11-24",
-            "note": "Matches Cyvl data collection period",
-            "overall_weather_risk": round(overall_risk, 3),
-            "daily": summary,
-        }
-        path = DATA_DIR / "weather.json"
-        path.write_text(json.dumps(result, indent=2))
-        print(f"   ✅ Weather fetched: avg risk={overall_risk:.2f} → {path}")
-        return result
-
-    except Exception as e:
-        print(f"   ⚠️  Weather fetch failed ({e}), using fallback winter estimate")
-        fallback = {
-            "location": "Somerville, MA",
-            "period": "2025-11-17 to 2025-11-24",
-            "overall_weather_risk": 0.68,
-            "daily": [
-                {"date": "2025-11-17", "avg_temp_c": 3.2, "min_temp_c": -0.5, "total_precip_mm": 2.1, "total_snow_cm": 0, "weather_risk": 0.75},
-                {"date": "2025-11-18", "avg_temp_c": 4.1, "min_temp_c": 1.2, "total_precip_mm": 0, "total_snow_cm": 0, "weather_risk": 0.55},
-                {"date": "2025-11-19", "avg_temp_c": 1.8, "min_temp_c": -2.1, "total_precip_mm": 1.5, "total_snow_cm": 0.3, "weather_risk": 0.85},
-                {"date": "2025-11-20", "avg_temp_c": 2.5, "min_temp_c": -1.0, "total_precip_mm": 0, "total_snow_cm": 0, "weather_risk": 0.70},
-                {"date": "2025-11-21", "avg_temp_c": 5.0, "min_temp_c": 2.0, "total_precip_mm": 3.2, "total_snow_cm": 0, "weather_risk": 0.55},
-                {"date": "2025-11-22", "avg_temp_c": 3.8, "min_temp_c": 0.5, "total_precip_mm": 0.8, "total_snow_cm": 0, "weather_risk": 0.65},
-                {"date": "2025-11-23", "avg_temp_c": 2.1, "min_temp_c": -3.0, "total_precip_mm": 0, "total_snow_cm": 0.5, "weather_risk": 0.80},
-                {"date": "2025-11-24", "avg_temp_c": 4.5, "min_temp_c": 1.8, "total_precip_mm": 1.1, "total_snow_cm": 0, "weather_risk": 0.60},
-            ],
-        }
-        fallback["overall_weather_risk"] = sum(d["weather_risk"] for d in fallback["daily"]) / 8
-        path = DATA_DIR / "weather.json"
-        path.write_text(json.dumps(fallback, indent=2))
-        return fallback
-
-
-# ─── Step 4: Compute Black Ice Risk ──────────────────────────────────────────
 def haversine_m(lon1, lat1, lon2, lat2):
-    """Distance between two GPS points in metres."""
     R = 6_371_000
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
@@ -290,145 +45,427 @@ def haversine_m(lon1, lat1, lon2, lat2):
     a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dl / 2) ** 2
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
+def calculate_line_length_ft(coords):
+    if not coords or len(coords) < 2:
+        return 0.0
+    total_m = 0.0
+    for i in range(len(coords) - 1):
+        total_m += haversine_m(coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1])
+    return total_m * 3.28084
 
-def compute_risk(tree_features, pavement_features, weather):
-    print("🧮 Computing Black Ice Risk scores...")
+def write_geojson(features, name):
+    path = DOWNLOAD_DIR / name
+    path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+    return path
 
-    tree_coords = [(f["geometry"]["coordinates"][0], f["geometry"]["coordinates"][1]) for f in tree_features]
-    weather_risk = weather["overall_weather_risk"]
+# ─── Load Assets from ZIP ─────────────────────────────────────────────────────
+def load_assets_from_zip():
+    print("📦 Reading aboveGroundAssets from zip...")
+    with zipfile.ZipFile(ZIP_PATH, 'r') as outer_zip:
+        with outer_zip.open('CityofSomervilleMAMarketingDemo-aboveGroundAssets.geojson') as f:
+            return json.loads(f.read().decode('utf-8'))
 
-    SHADE_RADIUS_M = 50   # trees within 50m contribute shade
-    MAX_TREE_DENSITY = 8  # trees within 50m → shade_score=1.0
+def process_assets(assets_json):
+    print("📍 Processing point & line assets from loaded JSON...")
+    trees, ramps, obstacles, transit = [], [], [], []
+    sidewalks, curbs = [], []
+    
+    tree_coords, transit_coords, obstacle_coords, catch_coords, ramp_coords = [], [], [], [], []
+    sidewalk_centroids = []
 
-    risk_features = []
-    high_risk_count = 0
+    features = assets_json.get("features", [])
+    for feat in features:
+        props = feat.get("properties", {})
+        geom = feat.get("geometry", {})
+        if not geom:
+            continue
+            
+        at = props.get("asset_type")
+        gtype = geom.get("type")
+        coords = geom.get("coordinates")
 
-    for seg in pavement_features:
-        lon, lat = seg["geometry"]["coordinates"]
-        props = seg["properties"]
+        if gtype == "Point":
+            lon, lat = coords[0], coords[1]
+            if not in_bounds(lon, lat):
+                continue
+            
+            is_tree = at == "TREE"
+            is_ramp = at == "RAMP"
+            ob_kind = OBSTACLE_TYPES.get(at)
+            tr_kind = TRANSIT_TYPES.get(at)
 
-        # ── Shade Score (tree density within radius) ──────────────────────
-        nearby_trees = sum(
-            1 for tx, ty in tree_coords if haversine_m(lon, lat, tx, ty) <= SHADE_RADIUS_M
-        )
-        shade_score = min(1.0, nearby_trees / MAX_TREE_DENSITY)
+            if is_tree:
+                tree_coords.append((lon, lat))
+                trees.append(feat)
+            elif is_ramp:
+                ramp_coords.append((lon, lat))
+                ramps.append(feat)
+            elif ob_kind:
+                obstacle_coords.append((lon, lat))
+                if at == "CATCH_BASIN":
+                    catch_coords.append((lon, lat))
+                obstacles.append(feat)
+            elif tr_kind:
+                transit_coords.append((lon, lat))
+                transit.append(feat)
 
-        # ── Pavement Risk (inverse of PCI) ────────────────────────────────
-        pci = props["pci_score"]
-        if pci > 0:
-            pavement_risk = 1.0 - (min(100, pci) / 100.0)
-        else:
-            pavement_risk = 0.5  # unknown → medium risk
+        elif gtype == "LineString":
+            if not coords:
+                continue
+            # Calculate centroid
+            xs = [c[0] for c in coords]
+            ys = [c[1] for c in coords]
+            clon, clat = sum(xs) / len(xs), sum(ys) / len(ys)
+            if not in_bounds(clon, clat):
+                continue
 
-        # ── Final Black Ice Risk ──────────────────────────────────────────
-        # Shade keeps ice frozen longer; weather determines if ice forms;
-        # poor pavement creates puddles/cracks that trap ice.
-        black_ice_risk = (
-            shade_score    * 0.40 +
-            weather_risk   * 0.40 +
-            pavement_risk  * 0.20
-        )
-        black_ice_risk = round(min(1.0, black_ice_risk), 4)
+            if at == "SIDEWALK":
+                sw_type = str(props.get("Type") or props.get("sidewalk_type") or "")
+                has_walk = sw_type in ("Sidewalk", "Shared Path")
+                sidewalk_centroids.append((clon, clat, has_walk))
+                # Normalize properties
+                feat["properties"]["has_walk"] = has_walk
+                feat["properties"]["sidewalk_type"] = sw_type
+                sidewalks.append(feat)
+            elif at == "CURB":
+                curbs.append(feat)
 
-        # Risk label
-        if black_ice_risk >= 0.75:
-            risk_label = "CRITICAL"
-            high_risk_count += 1
-        elif black_ice_risk >= 0.55:
-            risk_label = "HIGH"
-        elif black_ice_risk >= 0.35:
-            risk_label = "MEDIUM"
-        else:
-            risk_label = "LOW"
+    write_geojson(trees, "trees.geojson")
+    write_geojson(ramps, "ramps.geojson")
+    write_geojson(obstacles, "obstacles.geojson")
+    write_geojson(transit, "transit.geojson")
+    write_geojson(sidewalks, "sidewalks.geojson")
+    write_geojson(curbs, "curbs.geojson")
 
-        risk_features.append({
+    print(f"   ✅ trees={len(trees)} ramps={len(ramps)} obstacles={len(obstacles)} transit={len(transit)}")
+    print(f"   ✅ sidewalks={len(sidewalks)} curbs={len(curbs)}")
+
+    return {
+        "tree_coords": tree_coords,
+        "ramp_coords": ramp_coords,
+        "obstacle_coords": obstacle_coords,
+        "catch_coords": catch_coords,
+        "transit_coords": transit_coords,
+        "sidewalk_centroids": sidewalk_centroids,
+    }
+
+# ─── Load Pavement Shapefile from ZIP ──────────────────────────────────────────
+def load_pavements_from_zip():
+    print("🛣️  Reading pavement shapefile from zip...")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+        with zipfile.ZipFile(ZIP_PATH, 'r') as outer_zip:
+            # 1. Read 30ft Pavement Scores to get address mapping
+            pave30_zip_data = outer_zip.read('CityofSomervilleMAMarketingDemo-30ft Pavement Scores.zip')
+            pave30_zip_path = tmpdir_path / 'pave30.zip'
+            pave30_zip_path.write_bytes(pave30_zip_data)
+            with zipfile.ZipFile(pave30_zip_path, 'r') as inner_zip:
+                inner_zip.extractall(tmpdir_path / 'pave30_shp')
+            gdf30 = gpd.read_file(tmpdir_path / 'pave30_shp' / 'layer_zip.shp')
+            
+            seg_to_address = {}
+            for _, row in gdf30.iterrows():
+                seg = row.get("client_seg")
+                addr = row.get("address_st")
+                if seg and addr and addr != "None" and addr != "":
+                    seg_to_address[seg] = addr
+
+            # 2. Read Segment-to-Segment Pavement Scores
+            pavement_zip_data = outer_zip.read('CityofSomervilleMAMarketingDemo-Segment-to-Segment Pavement Scores.zip')
+            pavement_zip_path = tmpdir_path / 'pavement.zip'
+            pavement_zip_path.write_bytes(pavement_zip_data)
+            
+            with zipfile.ZipFile(pavement_zip_path, 'r') as inner_zip:
+                inner_zip.extractall(tmpdir_path / 'shp')
+                
+            gdf = gpd.read_file(tmpdir_path / 'shp' / 'layer_zip.shp')
+            
+            raw_pavements = []
+            for _, row in gdf.iterrows():
+                geom = row.geometry
+                if geom is None or geom.is_empty:
+                    continue
+                
+                if geom.geom_type == 'LineString':
+                    coords = list(geom.coords)
+                    xs = [c[0] for c in coords]
+                    ys = [c[1] for c in coords]
+                    lon, lat = sum(xs) / len(xs), sum(ys) / len(ys)
+                    length_ft = calculate_line_length_ft(coords)
+                else:
+                    continue
+                    
+                if not in_bounds(lon, lat):
+                    continue
+                    
+                seg = row.get("client_seg")
+                pci = float(row.get("score") or 50.0)
+                raw_pavements.append({
+                    "lon": lon, "lat": lat,
+                    "seg": seg,
+                    "address": seg_to_address.get(seg),
+                    "pci_score": pci,
+                    "label": str(row.get("label") or "Medium"),
+                    "length_ft": length_ft,
+                })
+            
+            # 3. Spatial nearest neighbor interpolation for unmapped segments
+            pavements = []
+            for item in raw_pavements:
+                if item["address"]:
+                    addr = item["address"]
+                else:
+                    # Find nearest segment that has an address
+                    best_dist = float('inf')
+                    best_addr = None
+                    for other in raw_pavements:
+                        if other["address"]:
+                            dist = haversine_m(item["lon"], item["lat"], other["lon"], other["lat"])
+                            if dist < best_dist:
+                                best_dist = dist
+                                best_addr = other["address"]
+                    
+                    if best_dist < 250: # within 250 meters
+                        addr = best_addr
+                    else:
+                        addr = f"{item['lat']:.4f}, {item['lon']:.4f}"
+                
+                pavements.append({
+                    "lon": item["lon"], "lat": item["lat"],
+                    "address": addr,
+                    "pci_score": item["pci_score"],
+                    "label": item["label"],
+                    "length_ft": item["length_ft"],
+                })
+                
+            print(f"   ✅ {len(pavements)} pavement segments loaded (mapped addresses using shapefile + spatial lookup)")
+            return pavements
+
+# ─── Weather ──────────────────────────────────────────────────────────────────
+def _fetch_archive(start, end):
+    p = {
+        "latitude": 42.3876, "longitude": -71.0995,
+        "start_date": start, "end_date": end,
+        "hourly": "temperature_2m,relative_humidity_2m,precipitation,snowfall,wind_speed_10m",
+        "temperature_unit": "celsius", "timezone": "America/New_York",
+    }
+    url = "https://archive-api.open-meteo.com/v1/archive?" + urllib.parse.urlencode(p)
+    with urllib.request.urlopen(url, timeout=20, context=_SSL_CTX) as r:
+        return json.loads(r.read())["hourly"]
+
+def _daily_rollup(hourly):
+    days = {}
+    for i, t in enumerate(hourly["time"]):
+        d = t[:10]
+        days.setdefault(d, {"temp": [], "humid": [], "precip": [], "snow": [], "wind": []})
+        days[d]["temp"].append(hourly["temperature_2m"][i] or 0)
+        days[d]["humid"].append(hourly["relative_humidity_2m"][i] or 0)
+        days[d]["precip"].append(hourly["precipitation"][i] or 0)
+        days[d]["snow"].append(hourly["snowfall"][i] or 0)
+        days[d]["wind"].append(hourly["wind_speed_10m"][i] or 0)
+    return days
+
+def fetch_weather():
+    print("🌡️  Fetching weather...")
+    # Nov 2025 Winter fallback or fetch
+    winter_daily = []
+    try:
+        days = _daily_rollup(_fetch_archive("2025-11-17", "2025-11-24"))
+        for day, v in sorted(days.items()):
+            avg_t = sum(v["temp"]) / len(v["temp"])
+            min_t = min(v["temp"])
+            avg_h = sum(v["humid"]) / len(v["humid"])
+            tot_p = sum(v["precip"])
+            tot_s = sum(v["snow"])
+            avg_w = sum(v["wind"]) / len(v["wind"])
+            risk = 0.0
+            if avg_t <= 4: risk += 0.4
+            if avg_t <= 2: risk += 0.3
+            if min_t <= 0: risk += 0.2
+            if tot_p > 0: risk += 0.15
+            if tot_s > 0: risk += 0.15
+            if avg_h > 75: risk += 0.10
+            winter_daily.append({
+                "date": day, "avg_temp_c": round(avg_t, 1), "min_temp_c": round(min_t, 1),
+                "avg_humidity": round(avg_h, 1), "total_precip_mm": round(tot_p, 2),
+                "total_snow_cm": round(tot_s, 2), "avg_wind_kmh": round(avg_w, 1),
+                "risk": round(min(1.0, risk), 3),
+            })
+    except Exception:
+        winter_daily = _winter_fallback()
+
+    # Jul 2025 Summer fallback or fetch
+    summer_daily = []
+    try:
+        days = _daily_rollup(_fetch_archive("2025-07-15", "2025-07-22"))
+        for day, v in sorted(days.items()):
+            avg_t = sum(v["temp"]) / len(v["temp"])
+            max_t = max(v["temp"])
+            avg_h = sum(v["humid"]) / len(v["humid"])
+            avg_w = sum(v["wind"]) / len(v["wind"])
+            risk = 0.0
+            if max_t >= 27: risk += 0.35
+            if max_t >= 30: risk += 0.30
+            if max_t >= 33: risk += 0.15
+            if avg_h >= 60: risk += 0.10
+            if avg_w < 10: risk += 0.10
+            summer_daily.append({
+                "date": day, "avg_temp_c": round(avg_t, 1), "max_temp_c": round(max_t, 1),
+                "avg_humidity": round(avg_h, 1), "avg_wind_kmh": round(avg_w, 1),
+                "risk": round(min(1.0, risk), 3),
+            })
+    except Exception:
+        summer_daily = _summer_fallback()
+
+    w_risk = sum(d["risk"] for d in winter_daily) / len(winter_daily)
+    s_risk = sum(d["risk"] for d in summer_daily) / len(summer_daily)
+    result = {
+        "location": "Somerville, MA",
+        "winter": {"period": "2025-11-17 to 2025-11-24", "note": "Matches Cyvl scan period", "overall_risk": round(w_risk, 3), "daily": winter_daily},
+        "summer": {"period": "2025-07-15 to 2025-07-22", "note": "Summer heat-stress week", "overall_risk": round(s_risk, 3), "daily": summer_daily},
+    }
+    (DOWNLOAD_DIR / "weather.json").write_text(json.dumps(result, indent=2))
+    return result
+
+def _winter_fallback():
+    base = [("2025-11-17", 3.2, -0.5, 0.75), ("2025-11-18", 4.1, 1.2, 0.55), ("2025-11-19", 1.8, -2.1, 0.85), ("2025-11-20", 2.5, -1.0, 0.70),
+            ("2025-11-21", 5.0, 2.0, 0.55), ("2025-11-22", 3.8, 0.5, 0.65), ("2025-11-23", 2.1, -3.0, 0.80), ("2025-11-24", 4.5, 1.8, 0.60)]
+    return [{"date": d, "avg_temp_c": a, "min_temp_c": m, "avg_humidity": 78, "total_precip_mm": 1.0, "total_snow_cm": 0.2, "avg_wind_kmh": 12, "risk": r} for d, a, m, r in base]
+
+def _summer_fallback():
+    base = [("2025-07-15", 25.7, 30.2, 0.75), ("2025-07-16", 26.7, 30.8, 0.80), ("2025-07-17", 26.8, 29.8, 0.70), ("2025-07-18", 24.4, 27.2, 0.55),
+            ("2025-07-19", 23.0, 28.0, 0.55), ("2025-07-20", 24.8, 30.0, 0.70), ("2025-07-21", 21.7, 25.0, 0.45), ("2025-07-22", 20.2, 25.6, 0.45)]
+    return [{"date": d, "avg_temp_c": a, "max_temp_c": mx, "avg_humidity": 65, "avg_wind_kmh": 9, "risk": r} for d, a, mx, r in base]
+
+# ─── Risk Calculation ─────────────────────────────────────────────────────────
+def compute_risk(pavements, ctx, weather):
+    print("🧮 Computing risk...")
+    tree_coords = ctx["tree_coords"]
+    transit_coords = ctx["transit_coords"]
+    ramp_coords = ctx["ramp_coords"]
+    catch_coords = ctx["catch_coords"]
+    sidewalk_centroids = ctx["sidewalk_centroids"]
+
+    w_weather = weather["winter"]["overall_risk"]
+    s_weather = weather["summer"]["overall_risk"]
+
+    R = 60
+    TREE_FULL, TRANSIT_FULL, RAMP_FULL, CATCH_FULL, SIDEWALK_FULL = 8, 3, 3, 3, 4
+
+    def near(coords, lon, lat):
+        return sum(1 for cx, cy in coords if haversine_m(lon, lat, cx, cy) <= R)
+
+    feats = []
+    for seg in pavements:
+        lon, lat = seg["lon"], seg["lat"]
+        n_trees = near(tree_coords, lon, lat)
+        n_transit = near(transit_coords, lon, lat)
+        n_ramps = near(ramp_coords, lon, lat)
+        n_catch = near(catch_coords, lon, lat)
+        n_walk = sum(1 for cx, cy, has in sidewalk_centroids if has and haversine_m(lon, lat, cx, cy) <= R)
+
+        shade_score = min(1.0, n_trees / TREE_FULL)
+        shade_deficit = 1.0 - shade_score
+        pci = seg["pci_score"]
+        pavement_risk = (1.0 - min(100, pci) / 100.0) if pci > 0 else 0.5
+        drainage_deficit = 1.0 - min(1.0, n_catch / CATCH_FULL)
+
+        ped_exposure = min(1.0, n_walk / SIDEWALK_FULL)
+        transit_exposure = min(1.0, n_transit / TRANSIT_FULL)
+        feasibility = round(min(1.0, (min(1.0, n_walk / SIDEWALK_FULL) + min(1.0, n_ramps / RAMP_FULL)) / 2), 3)
+
+        winter_surface = round(min(1.0, shade_score * 0.6 + drainage_deficit * 0.4), 3)
+        winter_risk = round(min(1.0, w_weather * 0.30 + winter_surface * 0.25 + ped_exposure * 0.20 + transit_exposure * 0.15 + feasibility * 0.10), 4)
+
+        summer_surface = round(min(1.0, shade_deficit * 0.6 + pavement_risk * 0.4), 3)
+        summer_risk = round(min(1.0, s_weather * 0.30 + summer_surface * 0.25 + ped_exposure * 0.20 + transit_exposure * 0.15 + feasibility * 0.10), 4)
+
+        feats.append({
             "type": "Feature",
             "geometry": {"type": "Point", "coordinates": [lon, lat]},
             "properties": {
-                **props,
-                "nearby_trees": nearby_trees,
-                "shade_score": round(shade_score, 3),
-                "weather_risk": round(weather_risk, 3),
-                "pavement_risk": round(pavement_risk, 3),
-                "black_ice_risk": black_ice_risk,
-                "risk_label": risk_label,
-            },
+                "address": seg["address"], "pci_score": pci, "length_ft": seg["length_ft"],
+                "nearby_trees": n_trees, "nearby_transit": n_transit, "nearby_ramps": n_ramps, "nearby_catch_basins": n_catch, "nearby_sidewalks": n_walk,
+                "shade_score": round(shade_score, 3), "shade_deficit": round(shade_deficit, 3), "pavement_risk": round(pavement_risk, 3),
+                "ped_exposure": round(ped_exposure, 3), "transit_exposure": round(transit_exposure, 3), "feasibility": feasibility,
+                "winter_climate": round(w_weather, 3), "winter_surface": winter_surface, "winter_risk": winter_risk, "winter_label": _label(winter_risk),
+                "summer_climate": round(s_weather, 3), "summer_surface": summer_surface, "summer_risk": summer_risk, "summer_label": _label(summer_risk),
+            }
         })
+    write_geojson(feats, "risk_map.geojson")
+    return feats
 
-    # Sort by risk descending
-    risk_features.sort(key=lambda f: f["properties"]["black_ice_risk"], reverse=True)
+def _label(r):
+    if r >= 0.75: return "CRITICAL"
+    if r >= 0.55: return "HIGH"
+    if r >= 0.35: return "MEDIUM"
+    return "LOW"
 
-    out = {"type": "FeatureCollection", "features": risk_features}
-    path = DATA_DIR / "risk_map.geojson"
-    path.write_text(json.dumps(out))
+def _summary_stats(risk_feats, ctx, weather):
+    print("🎯 Selecting demo sites and computing summary statistics...")
+    def factor_breakdown(p, season):
+        return {
+            "climate_severity": p[f"{season}_climate"],
+            "surface": p[f"{season}_surface"],
+            "pedestrian_exposure": p["ped_exposure"],
+            "transit_exposure": p["transit_exposure"],
+            "physical_feasibility": p["feasibility"],
+        }
+    def site(feat, season, kind):
+        p = feat["properties"]
+        return {
+            "kind": kind, "season": season, "address": p["address"], "coordinates": feat["geometry"]["coordinates"],
+            "risk": p[f"{season}_risk"], "label": p[f"{season}_label"], "factors": factor_breakdown(p, season),
+            "geometry_context": {
+                "nearby_trees": p["nearby_trees"], "nearby_sidewalks": p["nearby_sidewalks"], "nearby_transit_signals": p["nearby_transit"],
+                "nearby_ramps": p["nearby_ramps"], "nearby_catch_basins": p["nearby_catch_basins"], "pci_score": p["pci_score"], "shade_score": p["shade_score"],
+            }
+        }
 
-    scores = [f["properties"]["black_ice_risk"] for f in risk_features]
-    print(f"   ✅ Computed {len(risk_features)} segments")
-    print(f"   📊 Risk distribution:")
-    print(f"      CRITICAL (≥0.75): {sum(1 for s in scores if s >= 0.75)}")
-    print(f"      HIGH     (≥0.55): {sum(1 for s in scores if 0.55 <= s < 0.75)}")
-    print(f"      MEDIUM   (≥0.35): {sum(1 for s in scores if 0.35 <= s < 0.55)}")
-    print(f"      LOW      (<0.35): {sum(1 for s in scores if s < 0.35)}")
-    print(f"   → Saved to {path}")
-    return risk_features
+    summer_pool = [f for f in risk_feats if f["properties"]["nearby_sidewalks"] > 0]
+    summer_pool.sort(key=lambda f: f["properties"]["summer_risk"], reverse=True)
+    summer_site = site(summer_pool[0], "summer", "Hot shade-poor sidewalk corridor") if summer_pool else None
 
+    winter_pool = [f for f in risk_feats if f["properties"]["nearby_transit"] > 0]
+    winter_pool.sort(key=lambda f: f["properties"]["winter_risk"], reverse=True)
+    if not winter_pool:
+        winter_pool = sorted(risk_feats, key=lambda f: f["properties"]["winter_risk"], reverse=True)
+    winter_site = site(winter_pool[0], "winter", "Icy salt-priority transit crossing") if winter_pool else None
 
-# ─── Step 5: Export Summary Stats ────────────────────────────────────────────
-def export_summary(tree_features, risk_features, weather):
-    scores = [f["properties"]["black_ice_risk"] for f in risk_features]
-    critical = [f for f in risk_features if f["properties"]["risk_label"] == "CRITICAL"]
-
-    summary = {
-        "total_trees": len(tree_features),
-        "total_segments": len(risk_features),
-        "weather_period": weather.get("period", ""),
-        "overall_weather_risk": weather["overall_weather_risk"],
-        "risk_distribution": {
+    def dist(feats, season):
+        scores = [f["properties"][f"{season}_risk"] for f in feats]
+        return {
             "CRITICAL": sum(1 for s in scores if s >= 0.75),
             "HIGH": sum(1 for s in scores if 0.55 <= s < 0.75),
             "MEDIUM": sum(1 for s in scores if 0.35 <= s < 0.55),
             "LOW": sum(1 for s in scores if s < 0.35),
+        }
+    def top5(season):
+        ranked = sorted(risk_feats, key=lambda f: f["properties"][f"{season}_risk"], reverse=True)[:5]
+        return [{"address": f["properties"]["address"], "risk": f["properties"][f"{season}_risk"], "label": f["properties"][f"{season}_label"], "coordinates": f["geometry"]["coordinates"]} for f in ranked]
+
+    summary = {
+        "location": "Somerville, MA",
+        "total_segments": len(risk_feats),
+        "asset_counts": {
+            "trees": len(ctx["tree_coords"]), "ramps": len(ctx["ramp_coords"]), "obstacles": len(ctx["obstacle_coords"]),
+            "transit_signals": len(ctx["transit_coords"]), "sidewalks": len(ctx["sidewalk_centroids"]),
         },
-        "avg_risk_score": round(sum(scores) / len(scores), 3),
-        "max_risk_score": round(max(scores), 3),
-        "top_5_critical": [
-            {
-                "address": f["properties"]["address"],
-                "black_ice_risk": f["properties"]["black_ice_risk"],
-                "nearby_trees": f["properties"]["nearby_trees"],
-                "pci_score": f["properties"]["pci_score"],
-                "coordinates": f["geometry"]["coordinates"],
-            }
-            for f in critical[:5]
-        ],
-        "daily_weather": weather.get("daily", []),
+        "weather": {
+            "winter_risk": weather["winter"]["overall_risk"], "summer_risk": weather["summer"]["overall_risk"],
+            "winter_period": weather["winter"]["period"], "summer_period": weather["summer"]["period"],
+        },
+        "winter": {"distribution": dist(risk_feats, "winter"), "top5": top5("winter")},
+        "summer": {"distribution": dist(risk_feats, "summer"), "top5": top5("summer")},
+        "selected_sites": [s for s in (summer_site, winter_site) if s],
     }
-    path = DATA_DIR / "summary.json"
-    path.write_text(json.dumps(summary, indent=2))
-    print(f"\n📋 Summary saved → {path}")
-    print(f"   🌳 Trees in Point Cloud: {summary['total_trees']}")
-    print(f"   🛣️  Pavement segments: {summary['total_segments']}")
-    print(f"   🧊 CRITICAL risk zones: {summary['risk_distribution']['CRITICAL']}")
-    print(f"   📍 Top critical site: {summary['top_5_critical'][0]['address'] if summary['top_5_critical'] else 'N/A'}")
+    (DOWNLOAD_DIR / "summary.json").write_text(json.dumps(summary, indent=2))
 
-
-# ─── Main ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("=" * 60)
-    print("  SafeRoute AI — Black Ice Risk Processing Pipeline")
-    print("  Using Cyvl Point Cloud Data (Somerville, MA)")
-    print("=" * 60)
-    print()
-
-    trees = process_trees()
-    print()
-    pavements = process_pavements()
-    print()
+    assets_json = load_assets_from_zip()
+    ctx = process_assets(assets_json)
+    pavements = load_pavements_from_zip()
     weather = fetch_weather()
-    print()
-    risks = compute_risk(trees, pavements, weather)
-    print()
-    export_summary(trees, risks, weather)
-
-    print()
-    print("✨ All done! Open web/index.html to view the risk map.")
+    risk_feats = compute_risk(pavements, ctx, weather)
+    _summary_stats(risk_feats, ctx, weather)
+    print("✨ Successfully generated all files to data/download/")

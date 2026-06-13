@@ -1,0 +1,183 @@
+{
+  "location": "Somerville, MA",
+  "total_segments": 894,
+  "asset_counts": {
+    "trees": 2357,
+    "ramps": 748,
+    "obstacles": 1996,
+    "transit_signals": 263,
+    "sidewalks": 864
+  },
+  "weather": {
+    "winter_risk": 0.656,
+    "summer_risk": 0.475,
+    "winter_period": "2025-11-17 to 2025-11-24",
+    "summer_period": "2025-07-15 to 2025-07-22"
+  },
+  "winter": {
+    "distribution": {
+      "CRITICAL": 8,
+      "HIGH": 21,
+      "MEDIUM": 5,
+      "LOW": 860
+    },
+    "top5": [
+      {
+        "address": "Elm Street",
+        "risk": 0.8968,
+        "label": "CRITICAL",
+        "coordinates": [
+          -71.12074,
+          42.39356833333333
+        ]
+      },
+      {
+        "address": "Summer Street",
+        "risk": 0.8593,
+        "label": "CRITICAL",
+        "coordinates": [
+          -71.12025539999999,
+          42.3939386
+        ]
+      },
+      {
+        "address": "Street1953",
+        "risk": 0.8218,
+        "label": "CRITICAL",
+        "coordinates": [
+          -71.1165115,
+          42.401064250000005
+        ]
+      },
+      {
+        "address": "Warner Street",
+        "risk": 0.7968,
+        "label": "CRITICAL",
+        "coordinates": [
+          -71.1162406,
+          42.4012902
+        ]
+      },
+      {
+        "address": "Broadway",
+        "risk": 0.7781,
+        "label": "CRITICAL",
+        "coordinates": [
+          -71.11623828571429,
+          42.40112514285715
+        ]
+      }
+    ]
+  },
+  "summer": {
+    "distribution": {
+      "CRITICAL": 0,
+      "HIGH": 9,
+      "MEDIUM": 47,
+      "LOW": 838
+    },
+    "top5": [
+      {
+        "address": "Street1953",
+        "risk": 0.6967,
+        "label": "HIGH",
+        "coordinates": [
+          -71.1165115,
+          42.401064250000005
+        ]
+      },
+      {
+        "address": "Summer Street",
+        "risk": 0.686,
+        "label": "HIGH",
+        "coordinates": [
+          -71.12025539999999,
+          42.3939386
+        ]
+      },
+      {
+        "address": "Broadway",
+        "risk": 0.6458,
+        "label": "HIGH",
+        "coordinates": [
+          -71.1163034,
+          42.4010212
+        ]
+      },
+      {
+        "address": "Elm Street",
+        "risk": 0.615,
+        "label": "HIGH",
+        "coordinates": [
+          -71.12074,
+          42.39356833333333
+        ]
+      },
+      {
+        "address": "Broadway",
+        "risk": 0.606,
+        "label": "HIGH",
+        "coordinates": [
+          -71.11623828571429,
+          42.40112514285715
+        ]
+      }
+    ]
+  },
+  "selected_sites": [
+    {
+      "kind": "Hot shade-poor sidewalk corridor",
+      "season": "summer",
+      "address": "Street1953",
+      "coordinates": [
+        -71.1165115,
+        42.401064250000005
+      ],
+      "risk": 0.6967,
+      "label": "HIGH",
+      "factors": {
+        "climate_severity": 0.475,
+        "surface": 0.417,
+        "pedestrian_exposure": 1.0,
+        "transit_exposure": 1.0,
+        "physical_feasibility": 1.0
+      },
+      "geometry_context": {
+        "nearby_trees": 4,
+        "nearby_sidewalks": 5,
+        "nearby_transit_signals": 11,
+        "nearby_ramps": 13,
+        "nearby_catch_basins": 0,
+        "pci_score": 70.7,
+        "shade_score": 0.5
+      }
+    },
+    {
+      "kind": "Icy salt-priority transit crossing",
+      "season": "winter",
+      "address": "Elm Street",
+      "coordinates": [
+        -71.12074,
+        42.39356833333333
+      ],
+      "risk": 0.8968,
+      "label": "CRITICAL",
+      "factors": {
+        "climate_severity": 0.656,
+        "surface": 1.0,
+        "pedestrian_exposure": 1.0,
+        "transit_exposure": 1.0,
+        "physical_feasibility": 1.0
+      },
+      "geometry_context": {
+        "nearby_trees": 9,
+        "nearby_sidewalks": 6,
+        "nearby_transit_signals": 10,
+        "nearby_ramps": 4,
+        "nearby_catch_basins": 0,
+        "pci_score": 77.53,
+        "shade_score": 1.0
+      }
+    }
+  ]
+}
