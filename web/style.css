@@ -745,6 +745,11 @@ body[data-season="summer"] .factor-bar { background: linear-gradient(90deg, #ff6
     z-index: 1;
   }
 
+  /* Push MapLibre's top-right zoom controls below the fixed topbar */
+  .maplibregl-ctrl-top-right {
+    top: calc(var(--topbar-h) + 6px);
+  }
+
   /* Floating Legend — moved to the LEFT (under the pills strip) so it no
      longer sits on top of the map's top-right zoom (+/−) controls. */
   .map-legend {
