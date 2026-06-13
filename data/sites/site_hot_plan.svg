@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="600" height="400">
+<defs><marker id="arrowhead" markerWidth="6" markerHeight="4" refX="3" refY="2" orient="auto"><polygon points="0 0, 6 2, 0 4" fill="#333"/></marker></defs>
+<defs>
+  <style>
+    text { font-family: Arial, sans-serif; }
+    .title { font-size: 13px; font-weight: bold; fill: #222; }
+    .label { font-size: 9px; fill: #555; }
+    .legend { font-size: 8px; fill: #444; }
+  </style>
+</defs>
+<rect width="600" height="400" fill="#f5f5f0" rx="4"/>
+<text x="300" y="18" text-anchor="middle" class="title">Site Plan: Summer Street (HOT_CORRIDOR)</text>
+<rect x="40" y="170" width="520" height="60" fill="#ccc" rx="3" opacity="0.5"/>
+<text x="45" y="165" class="label">Road (PCI=1.2)</text>
+<rect x="40" y="150" width="520" height="18" fill="#e8e4d0" rx="2" opacity="0.6"/>
+<rect x="40" y="232" width="520" height="18" fill="#e8e4d0" rx="2" opacity="0.6"/>
+<text x="45" y="258" class="label">Sidewalk (Unknown)</text>
+<circle cx="221.1" cy="308.4" r="6" fill="none" stroke="#E53935" stroke-width="2"/>
+<line x1="213.1" y1="308.4" x2="229.1" y2="308.4" stroke="#E53935" stroke-width="1.5"/>
+<line x1="221.1" y1="300.4" x2="221.1" y2="316.4" stroke="#E53935" stroke-width="1.5"/>
+<circle cx="378.9" cy="98.5" r="4" fill="#9370DB" opacity="0.6" stroke="#333" stroke-width="0.5"/>
+<circle cx="327.9" cy="91.6" r="4" fill="#9370DB" opacity="0.6" stroke="#333" stroke-width="0.5"/>
+<circle cx="311.7" cy="308.4" r="14" fill="none" stroke="#1565C0" stroke-width="2" stroke-dasharray="5,3"/>
+<text x="311.7" y="330.4" text-anchor="middle" class="label" fill="#1565C0">🌳 Proposed</text>
+<line x1="45" y1="378" x2="412.1" y2="378" stroke="#333" stroke-width="2"/>
+<text x="48" y="374" class="legend">50m</text>
+<line x1="575" y1="50" x2="575" y2="35" stroke="#333" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<text x="575" y="32" text-anchor="middle" class="legend" font-weight="bold">N</text>
+<rect x="8" y="40" width="8" height="8" fill="#9370DB" rx="1"/>
+<text x="20" y="47" class="legend">RAMP</text>
+<rect x="480" y="375" width="110" height="18" fill="#4CAF50" rx="3"/>
+<text x="535" y="387" text-anchor="middle" class="legend" fill="white" font-weight="bold">ALL CHECKS PASS</text>
+</svg>

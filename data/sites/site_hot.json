@@ -1,0 +1,111 @@
+{
+  "id": "site_hot",
+  "type": "HOT_CORRIDOR",
+  "address": "Summer Street",
+  "center": [
+    -71.119209,
+    42.3935155
+  ],
+  "priority_score": 0.7948,
+  "priority_breakdown": {
+    "climate_severity": 0.8,
+    "pedestrian_exposure": 0.65,
+    "shade_deficit": 1.0,
+    "pavement_vulnerability": 0.988,
+    "physical_feasibility": 0.5
+  },
+  "climate_data": {
+    "heat_stress": 0.8795,
+    "cold_stress": 0.4919,
+    "avg_temp_c": 24.3,
+    "shade_score": 0.0
+  },
+  "geometry_measured": {
+    "sidewalk_width_ft": null,
+    "sidewalk_condition": "Unknown",
+    "curb_length_ft": null,
+    "curb_condition": null,
+    "road_area_sqft": 836.0,
+    "pci_score": 1.2
+  },
+  "nearby_assets": [
+    {
+      "type": "RAMP",
+      "distance_m": 93.1,
+      "coords": [
+        -71.1189477,
+        42.3943299
+      ],
+      "condition": "Good"
+    },
+    {
+      "type": "RAMP",
+      "distance_m": 94.7,
+      "coords": [
+        -71.1190322,
+        42.3943568
+      ],
+      "condition": "Good"
+    }
+  ],
+  "intervention": {
+    "type": "SHADE_TREE_PLANTING",
+    "name": "Street Tree Planting Program",
+    "description": "Plant 3 shade trees along corridor to reduce surface temperature by up to 8\u00b0F",
+    "dimensions_ft": {
+      "width": 4,
+      "depth": 4,
+      "height": 25
+    },
+    "required_clearance_ft": {
+      "from_pole": 10,
+      "from_hydrant": 5,
+      "from_sign": 4,
+      "pedestrian_path": 5
+    },
+    "placement": [
+      -71.119059,
+      42.3935155
+    ],
+    "feasibility": {
+      "pedestrian_clearance": {
+        "pass": true,
+        "required_ft": 5,
+        "available_ft": 8
+      },
+      "pole_clearance": {
+        "pass": true,
+        "required_ft": 10,
+        "nearest_ft": null
+      },
+      "hydrant_clearance": {
+        "pass": true,
+        "required_ft": 5,
+        "nearest_ft": null
+      },
+      "sign_clearance": {
+        "pass": true,
+        "required_ft": 4,
+        "nearest_ft": null
+      },
+      "sightline": {
+        "pass": true,
+        "note": "No traffic signal within 20ft"
+      },
+      "fits_geometry": {
+        "pass": true,
+        "note": "4\u00d74ft tree pit fits in available right-of-way"
+      }
+    },
+    "all_checks_pass": true
+  },
+  "impact_estimate": {
+    "shade_increase_pct": 35,
+    "surface_temp_reduction_f": 8,
+    "ice_risk_change": -0.15,
+    "pedestrian_comfort": "Significant improvement in summer shade coverage",
+    "maintenance_impact": "Reduced salt needs in winter due to faster ice melt from removed shade",
+    "energy_savings": "Reduced urban heat island effect, ~2% cooling energy reduction for adjacent buildings",
+    "safety_improvement": "Better visibility and pedestrian comfort, reduced heat-related incidents"
+  }
+}
