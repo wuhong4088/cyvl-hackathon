@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SafeRoute AI — Black Ice Risk Map | Somerville, MA</title>
+  <meta name="description" content="AI-powered Black Ice predictor using Cyvl LiDAR point cloud tree canopy data and historical weather analysis for Somerville, MA." />
+
+  <!-- MapLibre GL JS (drop-in Mapbox replacement, no token required) -->
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+  <!-- Chart.js for mini charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ── Top Bar ────────────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="topbar-brand">
+    <div class="brand-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M12 2C8 2 5 5 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-4-3-7-7-7z"/>
+        <circle cx="12" cy="9" r="2.5"/>
+      </svg>
+    </div>
+    <div>
+      <span class="brand-name">SafeRoute AI</span>
+      <span class="brand-sub">Powered by Cyvl Point Cloud</span>
+    </div>
+  </div>
+
+  <div class="topbar-pills">
+    <div class="pill pill-blue">
+      <span class="pill-dot"></span>
+      <span id="pill-trees">— Trees Mapped</span>
+    </div>
+    <div class="pill pill-orange">
+      <span class="pill-dot"></span>
+      <span id="pill-segments">— Segments</span>
+    </div>
+    <div class="pill pill-red">
+      <span class="pill-dot blink"></span>
+      <span id="pill-critical">— Critical Zones</span>
+    </div>
+  </div>
+
+  <div class="topbar-weather" id="weather-widget">
+    <div class="weather-icon">🌨</div>
+    <div class="weather-info">
+      <span class="weather-label">Nov 17–24, 2025 · Somerville MA</span>
+      <span class="weather-val" id="weather-avg-temp">—°C avg</span>
+    </div>
+  </div>
+</header>
+
+<!-- ── Main Layout ─────────────────────────────────────────────── -->
+<div class="layout">
+
+  <!-- ── Sidebar ─────────────────────────────────────────────── -->
+  <aside class="sidebar">
+
+    <!-- Risk Overview -->
+    <section class="sidebar-section">
+      <h2 class="section-title">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+        Black Ice Risk Overview
+      </h2>
+
+      <div class="risk-gauge-wrap">
+        <canvas id="riskGauge" width="200" height="110"></canvas>
+        <div class="gauge-label">
+          <span class="gauge-val" id="gauge-avg-risk">—</span>
+          <span class="gauge-unit">avg risk</span>
+        </div>
+      </div>
+
+      <div class="risk-bars" id="risk-bars">
+        <div class="risk-bar-row">
+          <span class="rbl critical">CRITICAL</span>
+          <div class="bar-wrap"><div class="bar bar-critical" id="bar-CRITICAL"></div></div>
+          <span class="bar-count" id="cnt-CRITICAL">—</span>
+        </div>
+        <div class="risk-bar-row">
+          <span class="rbl high">HIGH</span>
+          <div class="bar-wrap"><div class="bar bar-high" id="bar-HIGH"></div></div>
+          <span class="bar-count" id="cnt-HIGH">—</span>
+        </div>
+        <div class="risk-bar-row">
+          <span class="rbl medium">MEDIUM</span>
+          <div class="bar-wrap"><div class="bar bar-medium" id="bar-MEDIUM"></div></div>
+          <span class="bar-count" id="cnt-MEDIUM">—</span>
+        </div>
+        <div class="risk-bar-row">
+          <span class="rbl low">LOW</span>
+          <div class="bar-wrap"><div class="bar bar-low" id="bar-LOW"></div></div>
+          <span class="bar-count" id="cnt-LOW">—</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Algorithm Explainer -->
+    <section class="sidebar-section">
+      <h2 class="section-title">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z"/></svg>
+        Risk Algorithm
+      </h2>
+      <div class="algo-formula">
+        <div class="algo-row">
+          <span class="algo-weight">40%</span>
+          <div class="algo-item">
+            <span class="algo-icon">🌳</span>
+            <div>
+              <span class="algo-name">Tree Shade Score</span>
+              <span class="algo-desc">Cyvl point-cloud tree density within 50m keeps ice frozen</span>
+            </div>
+          </div>
+        </div>
+        <div class="algo-row">
+          <span class="algo-weight">40%</span>
+          <div class="algo-item">
+            <span class="algo-icon">🌡️</span>
+            <div>
+              <span class="algo-name">Weather Risk</span>
+              <span class="algo-desc">Historical temp, precip & snowfall (Open-Meteo API)</span>
+            </div>
+          </div>
+        </div>
+        <div class="algo-row">
+          <span class="algo-weight">20%</span>
+          <div class="algo-item">
+            <span class="algo-icon">🛣️</span>
+            <div>
+              <span class="algo-name">Pavement PCI</span>
+              <span class="algo-desc">Poor pavement traps water in cracks → ice pockets</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Weather Chart -->
+    <section class="sidebar-section">
+      <h2 class="section-title">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M15.98 1.804a1 1 0 00-1.96 0l-.24 1.192a1 1 0 01-.784.785l-1.192.238a1 1 0 000 1.962l1.192.238a1 1 0 01.785.785l.238 1.192a1 1 0 001.962 0l.238-1.192a1 1 0 01.785-.785l1.192-.238a1 1 0 000-1.962l-1.192-.238a1 1 0 01-.785-.785l-.238-1.192zM6.949 5.684a1 1 0 00-1.898 0l-.683 2.051a1 1 0 01-.633.633l-2.051.683a1 1 0 000 1.898l2.051.684a1 1 0 01.633.632l.683 2.051a1 1 0 001.898 0l.683-2.051a1 1 0 01.633-.633l2.051-.683a1 1 0 000-1.898l-2.051-.683a1 1 0 01-.633-.633L6.95 5.684z"/></svg>
+        Weather · Nov 17–24, 2025
+      </h2>
+      <canvas id="weatherChart" height="130"></canvas>
+      <p class="chart-note">★ Data collection period matches scan dates — real winter conditions</p>
+    </section>
+
+    <!-- Top Risk Sites -->
+    <section class="sidebar-section">
+      <h2 class="section-title">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9.69 18.933l.003.001C9.89 19.02 10 19 10 19s.11.02.308-.066l.002-.001.006-.003.018-.008a5.741 5.741 0 00.281-.14c.186-.096.446-.24.757-.433.62-.384 1.445-.966 2.274-1.765C15.302 15.012 17 12.42 17 9A7 7 0 103 9c0 3.42 1.698 6.012 3.354 7.585.829.799 1.654 1.38 2.274 1.765a11.31 11.31 0 00.757.433 5.741 5.741 0 00.281.14l.018.008.006.003zM10 11.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" clip-rule="evenodd"/></svg>
+        High-Risk Sites
+      </h2>
+      <div class="site-list" id="site-list">
+        <div class="site-skeleton"></div>
+        <div class="site-skeleton"></div>
+        <div class="site-skeleton"></div>
+      </div>
+    </section>
+
+    <!-- Layers Toggle -->
+    <section class="sidebar-section">
+      <h2 class="section-title">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M2 4a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1zM2 10a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1zM2 16a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1z"/></svg>
+        Map Layers
+      </h2>
+      <div class="layer-toggles">
+        <label class="layer-toggle">
+          <input type="checkbox" id="toggle-heatmap" checked />
+          <span class="toggle-track"></span>
+          <span class="toggle-label">
+            <span class="layer-icon">🔥</span> Risk Heatmap
+          </span>
+        </label>
+        <label class="layer-toggle">
+          <input type="checkbox" id="toggle-trees" checked />
+          <span class="toggle-track"></span>
+          <span class="toggle-label">
+            <span class="layer-icon">🌳</span> Tree Locations (Cyvl)
+          </span>
+        </label>
+        <label class="layer-toggle">
+          <input type="checkbox" id="toggle-critical" checked />
+          <span class="toggle-track"></span>
+          <span class="toggle-label">
+            <span class="layer-icon">❄️</span> Critical Zones
+          </span>
+        </label>
+      </div>
+    </section>
+
+    <div class="sidebar-footer">
+      <span class="footer-badge">🏙️ Cyvl Physical AI Hackathon</span>
+      <span class="footer-badge">📡 Open-Meteo API</span>
+    </div>
+  </aside>
+
+  <!-- ── Map ─────────────────────────────────────────────────── -->
+  <main class="map-container">
+    <div id="map"></div>
+
+    <!-- Map Legend -->
+    <div class="map-legend">
+      <div class="legend-title">Black Ice Risk</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff1744"></div><span>Critical (≥0.75)</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff6d00"></div><span>High (≥0.55)</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ffea00"></div><span>Medium (≥0.35)</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#69f0ae"></div><span>Low (&lt;0.35)</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#00e5ff; border-radius:50%"></div><span>🌳 Tree (Cyvl)</span></div>
+    </div>
+
+    <!-- Loading overlay -->
+    <div class="map-loading" id="map-loading">
+      <div class="loading-spinner"></div>
+      <p>Loading Cyvl Point Cloud data…</p>
+    </div>
+  </main>
+</div>
+
+<!-- ── Popup Template ──────────────────────────────────────────── -->
+<template id="popup-tpl">
+  <div class="popup-card">
+    <div class="popup-header">
+      <span class="popup-risk-badge" data-label></span>
+      <span class="popup-address"></span>
+    </div>
+    <div class="popup-score-row">
+      <div class="popup-score-big">
+        <span class="popup-score-val"></span>
+        <span class="popup-score-unit">risk score</span>
+      </div>
+      <div class="popup-score-ring" data-score></div>
+    </div>
+    <div class="popup-factors">
+      <div class="factor">
+        <span class="factor-label">🌳 Tree Shade</span>
+        <div class="factor-bar-wrap"><div class="factor-bar" data-shade></div></div>
+        <span class="factor-pct" data-shade-pct></span>
+      </div>
+      <div class="factor">
+        <span class="factor-label">🌡️ Weather</span>
+        <div class="factor-bar-wrap"><div class="factor-bar" data-weather></div></div>
+        <span class="factor-pct" data-weather-pct></span>
+      </div>
+      <div class="factor">
+        <span class="factor-label">🛣️ PCI</span>
+        <div class="factor-bar-wrap"><div class="factor-bar" data-pavement></div></div>
+        <span class="factor-pct" data-pave-pct></span>
+      </div>
+    </div>
+    <div class="popup-meta">
+      <span>🌲 <strong data-trees></strong> trees within 50m</span>
+      <span>PCI Score: <strong data-pci></strong>/100</span>
+    </div>
+  </div>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>
