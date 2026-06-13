@@ -639,3 +639,154 @@ body[data-season="summer"] .factor-bar { background: linear-gradient(90deg, #ff6
 
 /* ─── Legend separator ──────────────────────────────────────────── */
 .legend-sep { height: 1px; background: var(--border); margin: 6px 0; }
+
+/* ─── Mobile Drag Handle (hidden by default on desktop) ─────────── */
+.mobile-handle {
+  display: none;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.mobile-handle .handle-bar {
+  width: 36px;
+  height: 4px;
+  background: var(--text-muted);
+  border-radius: 2px;
+  transition: background 0.2s;
+}
+.mobile-handle:hover .handle-bar {
+  background: var(--text-secondary);
+}
+
+/* ─── Mobile Responsive Design (<= 768px) ───────────────────────── */
+@media (max-width: 768px) {
+  :root {
+    --topbar-h: 50px;
+    --sidebar-h: 70vh;
+  }
+
+  body, html {
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Simplify Top Bar */
+  .topbar {
+    padding: 0 10px;
+    gap: 10px;
+    justify-content: space-between;
+  }
+  .topbar-pills {
+    display: none; /* Hide pills to save space */
+  }
+  .topbar-weather {
+    display: none; /* Hide weather info on smaller mobile views */
+  }
+  .brand-sub {
+    display: none; /* Hide subtitle to keep brand clean */
+  }
+  .topbar-brand {
+    gap: 8px;
+  }
+  .brand-name {
+    font-size: 14px;
+  }
+  .brand-icon {
+    width: 28px; height: 28px;
+  }
+  .brand-icon svg { width: 14px; height: 14px; }
+  .season-switch {
+    padding: 2px;
+  }
+  .season-btn {
+    font-size: 10.5px;
+    padding: 4px 10px;
+  }
+
+  /* Stack Layout & Map full screen */
+  .layout {
+    flex-direction: column;
+    height: 100vh;
+    position: relative;
+    padding-top: var(--topbar-h);
+  }
+
+  .map-container {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0; left: 0; bottom: 0; right: 0;
+    z-index: 1;
+  }
+
+  /* Floating Legend */
+  .map-legend {
+    top: calc(var(--topbar-h) + 12px);
+    right: 10px;
+    bottom: auto;
+    left: auto;
+    padding: 8px 10px;
+    min-width: 120px;
+    background: rgba(10, 12, 18, 0.9);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .legend-title {
+    font-size: 8.5px;
+    margin-bottom: 4px;
+  }
+  .legend-item {
+    font-size: 9.5px;
+    margin-bottom: 3px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+  }
+
+  /* Bottom Sheet Sidebar */
+  .sidebar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    width: 100%;
+    height: var(--sidebar-h);
+    z-index: 1005;
+    background: rgba(17, 21, 32, 0.95);
+    backdrop-filter: blur(20px);
+    border-right: none;
+    border-top: 1px solid var(--border-bright);
+    border-top-left-radius: var(--radius-lg);
+    border-top-right-radius: var(--radius-lg);
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.6);
+    transform: translateY(0);
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Show mobile drag handle */
+  .mobile-handle {
+    display: flex;
+    border-top-left-radius: var(--radius-lg);
+    border-top-right-radius: var(--radius-lg);
+  }
+
+  /* Collapsed state (shows only drag handle + small title header) */
+  .sidebar.collapsed {
+    transform: translateY(calc(var(--sidebar-h) - 44px));
+  }
+
+  .sidebar-section {
+    padding: 12px 14px;
+  }
+}
+
+/* ─── Ultra Small Screen Adaptations (<= 400px) ─────────────────── */
+@media (max-width: 400px) {
+  .brand-name {
+    display: none; /* Only show icon on extremely small screens */
+  }
+}

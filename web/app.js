@@ -102,6 +102,7 @@ async function onMapLoad() {
   bindLayerToggles();
   bindMapEvents();
   bindSeasonSwitch();
+  bindMobileHandle();
 
   setSeason('winter');          // initial render of everything season-dependent
   populateStaticSidebar();      // pills, selected sites (both shown regardless of season)
@@ -109,6 +110,16 @@ async function onMapLoad() {
   const loading = document.getElementById('map-loading');
   loading.classList.add('hidden');
   setTimeout(() => loading.remove(), 600);
+}
+
+function bindMobileHandle() {
+  const handle = document.getElementById('mobile-handle');
+  const sidebar = document.getElementById('sidebar');
+  if (handle && sidebar) {
+    handle.addEventListener('click', () => {
+      sidebar.classList.toggle('collapsed');
+    });
+  }
 }
 
 // ─── Add Map Layers (once) ────────────────────────────────────────────────────
