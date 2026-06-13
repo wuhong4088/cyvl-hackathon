@@ -115,11 +115,48 @@ async function onMapLoad() {
 function bindMobileHandle() {
   const handle = document.getElementById('mobile-handle');
   const sidebar = document.getElementById('sidebar');
-  if (handle && sidebar) {
-    handle.addEventListener('click', () => {
-      sidebar.classList.toggle('collapsed');
-    });
-  }
+  if (!handle || !sidebar) return;
+
+  const PEEK = 44;  // px of the sheet left visible when collapsed (matches CSS)
+  const collapsedOffset = () => sidebar.getBoundingClientRect().height - PEEK;
+
+  // ── Tap to toggle (suppressed if the touch was actually a drag) ──
+  handle.addEventListener('click', () => {
+    if (sidebar.dataset.dragged === '1') { sidebar.dataset.dragged = '0'; return; }
+    sidebar.classList.toggle('collapsed');
+  });
+
+  // ── Drag / swipe to expand & collapse ──
+  let startY = null, startT = 0, dragging = false;
+  const currentT = () => (sidebar.classList.contains('collapsed') ? collapsedOffset() : 0);
+
+  const onStart = (y) => {
+    startY = y;
+    startT = currentT();
+    dragging = true;
+    sidebar.dataset.dragged = '0';
+    sidebar.style.transition = 'none';
+  };
+  const onMove = (y) => {
+    if (!dragging) return;
+    const dy = y - startY;
+    if (Math.abs(dy) > 5) sidebar.dataset.dragged = '1';
+    const t = Math.min(collapsedOffset(), Math.max(0, startT + dy));
+    sidebar.style.transform = `translateY(${t}px)`;
+  };
+  const onEnd = (y) => {
+    if (!dragging) return;
+    dragging = false;
+    const dy = y - startY;
+    sidebar.style.transition = '';      // restore the CSS spring
+    sidebar.style.transform = '';       // hand control back to the class
+    if (dy < -30) sidebar.classList.remove('collapsed');   // pulled up → expand
+    else if (dy > 30) sidebar.classList.add('collapsed');  // pulled down → collapse
+  };
+
+  handle.addEventListener('touchstart', (e) => onStart(e.touches[0].clientY), { passive: true });
+  handle.addEventListener('touchmove', (e) => onMove(e.touches[0].clientY), { passive: true });
+  handle.addEventListener('touchend', (e) => onEnd(e.changedTouches[0].clientY));
 }
 
 // ─── Add Map Layers (once) ────────────────────────────────────────────────────

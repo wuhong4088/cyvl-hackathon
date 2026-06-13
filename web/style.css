@@ -650,6 +650,7 @@ body[data-season="summer"] .factor-bar { background: linear-gradient(90deg, #ff6
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   flex-shrink: 0;
+  touch-action: none;   /* let JS own the drag gesture instead of scrolling */
 }
 .mobile-handle .handle-bar {
   width: 36px;
