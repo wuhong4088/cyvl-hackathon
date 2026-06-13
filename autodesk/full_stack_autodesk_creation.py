@@ -10,14 +10,29 @@ import numpy as np
 import laspy
 import open3d as o3d
 
-# key here!
+# --- 1. Configuration ---
+APS_CLIENT_ID = os.environ.get("APS_CLIENT_ID", "your_client_id_here")
+APS_CLIENT_SECRET = os.environ.get("APS_CLIENT_SECRET", "your_client_secret_here")
+
+# File definitions - automatically resolve path relative to project root or script location
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(script_dir)
+
+laz_candidate_1 = os.path.join(project_root, "data", "download", "global_xyz_rgb_icgu_76_12000_14000.laz")
+laz_candidate_2 = os.path.join(script_dir, "global_xyz_rgb_icgu_76_12000_14000.laz")
+
+if os.path.exists(laz_candidate_1):
+    INPUT_LAZ = laz_candidate_1
+else:
+    INPUT_LAZ = laz_candidate_2
+
+OUTPUT_OBJ = os.path.join(script_dir, "global_xyz_rgb_icgu_76_12000_14000.obj")
 
 FILE_NAME = os.path.basename(OUTPUT_OBJ)
-
 BUCKET_KEY = f"cyvl_hackathon_bucket_{APS_CLIENT_ID.lower()}"
 
 
-def generate_obj_from_laz(laz_path, obj_path):
+def generate_obj_from_laz(laz_path, obj_path, sample_stride=50):
     """Task 0: Convert LAZ to a smooth 3D OBJ using Voxel-Optimized Poisson"""
     print(f"\n--- STEP 0: Point Cloud Meshing ---")
     start_time = time.time()
@@ -27,7 +42,7 @@ def generate_obj_from_laz(laz_path, obj_path):
         las = fh.read()
 
     # 1. Initial RAM-saving slice (prevents memory crashes before Open3D even starts)
-    sampled_points = las.points[::50]
+    sampled_points = las.points[::sample_stride]
 
     x = np.array(sampled_points.x)
     y = np.array(sampled_points.y)

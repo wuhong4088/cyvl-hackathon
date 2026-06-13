@@ -1,0 +1,17 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS files
+.DS_Store
+
+# User generated 3D data and downloads
+*.obj
+*.laz
+*.zip
+data/download/
+autodesk/*.obj
+
+# Generated web files with credentials/tokens
+index.html
