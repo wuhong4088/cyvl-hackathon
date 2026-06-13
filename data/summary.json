@@ -1,147 +1,187 @@
 {
-  "pipeline": "SafeRoute AI \u2014 Dual Climate Stress Pipeline",
-  "timestamp": "2025-11-24T00:00:00Z",
-  "total_assets": 12036,
-  "total_pavement_segments": 5080,
+  "location": "Somerville, MA",
+  "total_segments": 5080,
+  "asset_counts": {
+    "trees": 2357,
+    "ramps": 748,
+    "obstacles": 1996,
+    "transit_signals": 263,
+    "sidewalks": 864
+  },
   "weather": {
+    "winter_risk": 0.656,
+    "summer_risk": 0.475,
     "winter_period": "2025-11-17 to 2025-11-24",
-    "overall_cold_risk": 0.656,
-    "overall_heat_severity": 0.8
+    "summer_period": "2025-07-15 to 2025-07-22"
   },
-  "heat_stress": {
-    "avg": 0.656,
-    "max": 0.879,
-    "top_site": "Summer Street"
-  },
-  "cold_stress": {
-    "avg": 0.333,
-    "max": 0.783,
-    "top_site": "Warner Street"
-  },
-  "combined_priority": {
-    "avg": 0.599,
-    "max": 0.797,
+  "winter": {
     "distribution": {
-      "CRITICAL": 132,
-      "HIGH": 4720,
-      "MEDIUM": 228,
-      "LOW": 0
-    }
+      "CRITICAL": 31,
+      "HIGH": 108,
+      "MEDIUM": 71,
+      "LOW": 4870
+    },
+    "top5": [
+      {
+        "address": "Elm Street",
+        "risk": 0.8968,
+        "label": "CRITICAL",
+        "coordinates": [
+          -71.120876,
+          42.3937885
+        ]
+      },
+      {
+        "address": "Elm Street",
+        "risk": 0.8968,
+        "label": "CRITICAL",
+        "coordinates": [
+          -71.1207835,
+          42.393638499999994
+        ]
+      },
+      {
+        "address": "Summer Street",
+        "risk": 0.8968,
+        "label": "CRITICAL",
+        "coordinates": [
+          -71.12038150000001,
+          42.39399
+        ]
+      },
+      {
+        "address": "Summer Street",
+        "risk": 0.8968,
+        "label": "CRITICAL",
+        "coordinates": [
+          -71.12057133333333,
+          42.394067
+        ]
+      },
+      {
+        "address": "Summer Street",
+        "risk": 0.8968,
+        "label": "CRITICAL",
+        "coordinates": [
+          -71.12047466666667,
+          42.394027666666666
+        ]
+      }
+    ]
   },
-  "asset_breakdown": {
-    "SIGN": 3782,
-    "TREE": 2357,
-    "CURB": 915,
-    "SIDEWALK": 864,
-    "MANHOLE_COVER": 841,
-    "LUMINARIES": 790,
-    "RAMP": 748,
-    "UTILITY_POLE": 437,
-    "CATCH_BASIN": 381,
-    "TRAFFIC_SIGNAL_POLE": 215,
-    "HYDRANT": 173,
-    "PEDESTRIAN_PUSH_BUTTON": 164,
-    "TRAFFIC_SIGNAL": 149,
-    "STAND_ALONE_PEDESTRIAN_HEAD": 99,
-    "BIKE_RACK": 43,
-    "CCTV": 37,
-    "FLASHING_BEACONS": 28,
-    "GUARDRAILS": 13
+  "summer": {
+    "distribution": {
+      "CRITICAL": 0,
+      "HIGH": 34,
+      "MEDIUM": 594,
+      "LOW": 4452
+    },
+    "top5": [
+      {
+        "address": "Broadway",
+        "risk": 0.7105,
+        "label": "HIGH",
+        "coordinates": [
+          -71.1165795,
+          42.4009915
+        ]
+      },
+      {
+        "address": "Elm Street",
+        "risk": 0.7082,
+        "label": "HIGH",
+        "coordinates": [
+          -71.120645,
+          42.393414500000006
+        ]
+      },
+      {
+        "address": "Street1953",
+        "risk": 0.7075,
+        "label": "HIGH",
+        "coordinates": [
+          -71.1165895,
+          42.4010085
+        ]
+      },
+      {
+        "address": "Broadway",
+        "risk": 0.7032,
+        "label": "HIGH",
+        "coordinates": [
+          -71.11636425,
+          42.401019250000004
+        ]
+      },
+      {
+        "address": "Summer Street",
+        "risk": 0.691,
+        "label": "HIGH",
+        "coordinates": [
+          -71.12018649999999,
+          42.393911
+        ]
+      }
+    ]
   },
-  "interventions": {
-    "hot_site": {
-      "address": "Summer Street",
-      "type": "SHADE_TREE_PLANTING",
-      "all_checks_pass": true
-    },
-    "cold_site": {
-      "address": "Warner Street",
-      "type": "WINTER_MAINTENANCE_STATION",
-      "all_checks_pass": true
-    }
-  },
-  "top_5_heat": [
+  "selected_sites": [
     {
-      "address": "Summer Street",
-      "heat_stress": 0.8795,
-      "coords": [
-        -71.119209,
-        42.3935155
-      ]
-    },
-    {
-      "address": "Summer Street",
-      "heat_stress": 0.8695,
-      "coords": [
-        -71.1197985,
-        42.393751
-      ]
-    },
-    {
-      "address": "School Street",
-      "heat_stress": 0.8675,
-      "coords": [
-        -71.0982247,
-        42.38758
-      ]
+      "kind": "Hot shade-poor sidewalk corridor",
+      "season": "summer",
+      "address": "Broadway",
+      "coordinates": [
+        -71.1165795,
+        42.4009915
+      ],
+      "risk": 0.7105,
+      "label": "HIGH",
+      "factors": {
+        "climate_severity": 0.475,
+        "surface": 0.472,
+        "pedestrian_exposure": 1.0,
+        "transit_exposure": 1.0,
+        "physical_feasibility": 1.0
+      },
+      "geometry_context": {
+        "nearby_trees": 4,
+        "nearby_sidewalks": 5,
+        "nearby_transit_signals": 14,
+        "nearby_ramps": 16,
+        "nearby_catch_basins": 0,
+        "pci_score": 57.0,
+        "shade_score": 0.5
+      }
     },
     {
-      "address": "Summer Street",
-      "heat_stress": 0.8598,
-      "coords": [
-        -71.1197,
-        42.3937105
-      ]
-    },
-    {
-      "address": "Summer Street",
-      "heat_stress": 0.8585,
-      "coords": [
-        -71.119307,
-        42.393554
-      ]
+      "kind": "Icy salt-priority transit crossing",
+      "season": "winter",
+      "address": "Elm Street",
+      "coordinates": [
+        -71.120876,
+        42.3937885
+      ],
+      "risk": 0.8968,
+      "label": "CRITICAL",
+      "factors": {
+        "climate_severity": 0.656,
+        "surface": 1.0,
+        "pedestrian_exposure": 1.0,
+        "transit_exposure": 1.0,
+        "physical_feasibility": 1.0
+      },
+      "geometry_context": {
+        "nearby_trees": 15,
+        "nearby_sidewalks": 9,
+        "nearby_transit_signals": 12,
+        "nearby_ramps": 5,
+        "nearby_catch_basins": 0,
+        "pci_score": 67.0,
+        "shade_score": 1.0
+      }
     }
   ],
-  "top_5_cold": [
-    {
-      "address": "Warner Street",
-      "cold_stress": 0.7828,
-      "coords": [
-        -71.115648,
-        42.401715
-      ]
-    },
-    {
-      "address": "Kidder Avenue",
-      "cold_stress": 0.7743,
-      "coords": [
-        -71.1187175,
-        42.399344
-      ]
-    },
-    {
-      "address": "Kidder Avenue",
-      "cold_stress": 0.7703,
-      "coords": [
-        -71.1186185,
-        42.3993065
-      ]
-    },
-    {
-      "address": "Willow Avenue",
-      "cold_stress": 0.7438,
-      "coords": [
-        -71.117221,
-        42.3935567
-      ]
-    },
-    {
-      "address": "Willow Avenue",
-      "cold_stress": 0.7395,
-      "coords": [
-        -71.1149355,
-        42.3968275
-      ]
-    }
+  "data_notes": [
+    "Sidewalk width not provided by dataset \u2014 feasibility uses sidewalk presence/type + ramp density as proxies.",
+    "No dedicated bus-stop layer \u2014 pedestrian heads + push buttons (signalised crossings) used as transit/exposure proxy."
   ]
 }
