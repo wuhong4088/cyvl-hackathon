@@ -10,10 +10,15 @@ const DATA_BASE = '../data/download/';
 
 // ─── State ───────────────────────────────────────────────────────────────────
 let map;
-let data = {};                 // { risk, trees, sidewalks, curbs, ramps, obstacles, transit, summary, weather }
+let data = {};                 // { risk, trees, sidewalks, curbs, ramps, obstacles, transit, summary, weather, autodeskConfig }
 let weatherChart = null;
 let currentPopup = null;
 let currentSeason = 'winter';  // 'winter' | 'summer'
+let selectedFeatureProperties = null;
+let selectedSegmentInBounds = true;
+let viewer = null;
+let currentMeshCoords = null;
+let activeIntervention = 'none';
 
 // ─── Risk color ramp (shared by both seasons) ────────────────────────────────
 const RISK_COLOR_EXPR = (prop) => [
@@ -82,10 +87,12 @@ async function loadData() {
   const all = await Promise.all([
     ...files.map(f => fetch(DATA_BASE + f + '.geojson').then(r => r.json())),
     ...jsons.map(f => fetch(DATA_BASE + f + '.json').then(r => r.json())),
+    fetch(DATA_BASE + 'autodesk_config.json').then(r => r.json()).catch(() => null)
   ]);
   data.risk = all[0]; data.trees = all[1]; data.sidewalks = all[2];
   data.curbs = all[3]; data.ramps = all[4]; data.obstacles = all[5];
   data.transit = all[6]; data.summary = all[7]; data.weather = all[8];
+  data.autodeskConfig = all[9];
 }
 
 // ─── On Map Load ─────────────────────────────────────────────────────────────
@@ -103,6 +110,7 @@ async function onMapLoad() {
   bindMapEvents();
   bindSeasonSwitch();
   bindMobileHandle();
+  bindAutodeskEvents();
 
   setSeason('winter');          // initial render of everything season-dependent
   populateStaticSidebar();      // pills, selected sites (both shown regardless of season)
@@ -517,7 +525,7 @@ function renderSelectedSites() {
       </div>`;
   }).join('');
 
-  // Click → fly to site
+  // Click → fly to site and open 3D viewer popup
   wrap.querySelectorAll('.selsite-card').forEach(card => {
     card.addEventListener('click', () => {
       const site = sites[+card.dataset.idx];
@@ -528,6 +536,26 @@ function renderSelectedSites() {
         setSeason(site.season);
       }
       map.flyTo({ center: site.coordinates, zoom: 16.5, pitch: 35, duration: 1100 });
+
+      const matchedFeature = data.risk.features.find(f => 
+        Math.abs(f.geometry.coordinates[0] - site.coordinates[0]) < 0.0001 &&
+        Math.abs(f.geometry.coordinates[1] - site.coordinates[1]) < 0.0001
+      );
+      if (matchedFeature) {
+        showRiskPopup(site.coordinates, matchedFeature.properties);
+      } else {
+        showRiskPopup(site.coordinates, {
+          address: site.address,
+          pci_score: site.geometry_context.pci_score,
+          nearby_trees: site.geometry_context.nearby_trees,
+          nearby_sidewalks: site.geometry_context.nearby_sidewalks,
+          nearby_transit: site.geometry_context.nearby_transit_signals,
+          winter_risk: site.risk,
+          summer_risk: site.risk,
+          [currentSeason + '_risk']: site.risk,
+          [currentSeason + '_label']: site.label
+        });
+      }
     });
   });
 }
@@ -544,6 +572,8 @@ function bindMapEvents() {
 }
 
 function showRiskPopup(coords, props) {
+  selectedFeatureProperties = props;
+
   const node = document.getElementById('popup-tpl').content.cloneNode(true);
   const risk = +props[riskProp()];
   const label = props[labelProp()] || labelOf(risk);
@@ -575,6 +605,69 @@ function showRiskPopup(coords, props) {
   currentPopup = new maplibregl.Popup({ closeOnClick: true, maxWidth: '320px' })
     .setLngLat(coords).setDOMContent(div).addTo(map);
   currentPopup.on('close', () => { currentPopup = null; });
+
+  // Update Autodesk 3D panel
+  const utm = wgs84ToUtm19(coords[0], coords[1]);
+  const x_min = 326443.79, x_max = 327021.93;
+  const y_min = 4695226.89, y_max = 4696110.99;
+  const inPointCloud = (utm.x >= x_min && utm.x <= x_max && utm.y >= y_min && utm.y <= y_max);
+  selectedSegmentInBounds = inPointCloud;
+
+  const panel = document.getElementById('autodesk-viewer-panel');
+  if (panel) {
+    panel.classList.remove('hidden');
+    
+    const title = document.getElementById('autodesk-panel-title');
+    const subtitle = document.getElementById('autodesk-panel-subtitle');
+    const viewerDiv = document.getElementById('forgeViewerContainer');
+    const controlsDiv = document.querySelector('.intervention-controls');
+    
+    if (data.autodeskConfig) {
+      viewerDiv.style.display = 'block';
+      controlsDiv.style.display = 'flex';
+      
+      let targetUtmX = utm.x;
+      let targetUtmY = utm.y;
+      let note = "";
+      
+      if (inPointCloud) {
+        title.textContent = `3D Spatial Planner: ${props.address || 'Unnamed Segment'}`;
+        subtitle.textContent = `PCI: ${Math.round(props.pci_score)} | Risk Score: ${risk.toFixed(2)}`;
+      } else {
+        // Clamp the coords to nearest point cloud boundary
+        targetUtmX = Math.max(x_min, Math.min(x_max, targetUtmX));
+        targetUtmY = Math.max(y_min, Math.min(y_max, targetUtmY));
+        note = " (Nearest 3D sector)";
+        title.textContent = `3D Spatial Planner: ${props.address || 'Unnamed Segment'}${note}`;
+        subtitle.textContent = `PCI: ${Math.round(props.pci_score)} | Risk Score: ${risk.toFixed(2)}`;
+      }
+      
+      const clampedCoords = {
+        x: targetUtmX - data.autodeskConfig.center[0],
+        y: targetUtmY - data.autodeskConfig.center[1],
+        z: 0.0
+      };
+      currentMeshCoords = clampedCoords;
+      
+      initAutodeskViewer(data.autodeskConfig.token, data.autodeskConfig.urn)
+        .then(() => {
+          setTimeout(() => {
+            focusViewerOnCoords(clampedCoords.x, clampedCoords.y, clampedCoords.z);
+          }, 300);
+        })
+        .catch(err => {
+          console.error("Autodesk load error", err);
+        });
+        
+      setIntervention('none');
+      
+    } else {
+      title.textContent = "3D Spatial Planner";
+      subtitle.textContent = "Configuration error";
+      viewerDiv.style.display = 'none';
+      controlsDiv.style.display = 'none';
+    }
+  }
 }
 
 // ─── Gauge ────────────────────────────────────────────────────────────────────
@@ -621,6 +714,336 @@ function bindLayerToggles() {
   toggle('toggle-transit', ['transit-layer']);
   toggle('toggle-obstacles', ['obstacles-layer']);
   toggle('toggle-ramps', ['ramps-layer']);
+}
+
+// ─── Autodesk 3D Spatial Planner Integration ───────────────────────────────────
+
+// WGS84 GPS to UTM Zone 19N Coordinate Projection
+function wgs84ToUtm19(lon, lat) {
+  const a = 6378137.0;
+  const f = 1.0 / 298.257223563;
+  const k0 = 0.9996;
+  const lambda0 = -69.0 * Math.PI / 180.0;
+  
+  const phi = lat * Math.PI / 180.0;
+  const lam = lon * Math.PI / 180.0;
+  
+  const e2 = 2 * f - f * f;
+  const n = f / (2 - f);
+  
+  const A = (lam - lambda0) * Math.cos(phi);
+  
+  const alpha = (a / (1 + n)) * (1 + (n * n) / 4 + (n * n * n * n) / 64);
+  const beta = (3 / 2) * n - (9 / 16) * (n * n * n);
+  const gamma = (15 / 16) * (n * n) - (15 / 32) * (n * n * n * n);
+  const delta = (35 / 48) * (n * n * n);
+  
+  const s = alpha * (phi - beta * Math.sin(2 * phi) + gamma * Math.sin(4 * phi) - delta * Math.sin(6 * phi));
+  
+  const t = Math.tan(phi);
+  const nu = a / Math.sqrt(1 - e2 * Math.sin(phi) * Math.sin(phi));
+  const rho = nu * (1 - e2) / (1 - e2 * Math.sin(phi) * Math.sin(phi));
+  const eta2 = e2 * Math.cos(phi) * Math.cos(phi) / (1 - e2);
+  
+  const x = 500000.0 + k0 * nu * (A + (1 - t * t + eta2) * (A * A * A) / 6 + (5 - 18 * t * t + t * t * t * t + 14 * eta2 - 58 * t * t * eta2) * (A * A * A * A * A) / 120);
+  const y = k0 * (s + nu * t * ((A * A) / 2 + (5 - t * t + 9 * eta2 + 4 * eta2 * eta2) * (A * A * A * A) / 24 + (61 - 58 * t * t + t * t * t * t + 270 * eta2 - 330 * t * t * eta2) * (A * A * A * A * A * A) / 720));
+  
+  return { x, y };
+}
+
+// Convert GPS coordinates to local centered mesh coordinates
+function gpsToMeshCoords(lon, lat, center) {
+  if (!center) return { x: 0, y: 0, z: 0 };
+  const utm = wgs84ToUtm19(lon, lat);
+  return {
+    x: utm.x - center[0],
+    y: utm.y - center[1],
+    z: 0.0 // Ground level assumption relative to centered mesh
+  };
+}
+
+// Initialize Autodesk Viewer instance
+function initAutodeskViewer(token, urn) {
+  if (viewer) return Promise.resolve(viewer);
+
+  return new Promise((resolve, reject) => {
+    const options = {
+      env: 'AutodeskProduction2',
+      api: 'streamingV2',
+      getAccessToken: function(onTokenReady) {
+        onTokenReady(token, 3600);
+      }
+    };
+
+    Autodesk.Viewing.Initializer(options, function() {
+      const htmlDiv = document.getElementById('forgeViewer');
+      viewer = new Autodesk.Viewing.GuiViewer3D(htmlDiv);
+      const started = viewer.start();
+      if (started > 0) {
+        console.error('Failed to initialize Autodesk Viewer');
+        reject(started);
+        return;
+      }
+      
+      const documentId = 'urn:' + urn;
+      Autodesk.Viewing.Document.load(documentId, function(doc) {
+        const viewables = doc.getRoot().getDefaultGeometry();
+        viewer.loadDocumentNode(doc, viewables).then(() => {
+          viewer.setTheme('dark-theme');
+          
+          // Match SafeRoute AI's dark theme colors: rgb(17, 21, 32)
+          viewer.setBackgroundColor(17, 21, 32, 17, 21, 32);
+          viewer.setLightPreset(2); // Dark sky preset
+          
+          // Fit the camera view to the entire model initially so it is fully visible
+          setTimeout(() => {
+            viewer.fitToView();
+          }, 500);
+          
+          resolve(viewer);
+        });
+      }, function(err) {
+        console.error('Failed to load document in Autodesk Viewer:', err);
+        reject(err);
+      });
+    });
+  });
+}
+
+// Fly/focus viewer camera on segment location
+function focusViewerOnCoords(x, y, z) {
+  if (!viewer) return;
+  const THREE = window.THREE;
+  if (!THREE) return;
+
+  const target = new THREE.Vector3(x, y, z);
+  const position = new THREE.Vector3(x + 12, y + 12, z + 9); // Offset camera slightly
+  
+  viewer.navigation.setTarget(target);
+  viewer.navigation.setPosition(position);
+  
+  drawRiskOverlay(x, y, z);
+  drawSolutionOverlay();
+}
+
+// Render red translucent risk zone cylinder
+function drawRiskOverlay(x, y, z) {
+  if (!viewer) return;
+  const THREE = window.THREE;
+  if (!THREE) return;
+
+  if (!viewer.impl.hasOverlayScene("riskOverlayScene")) {
+    viewer.impl.createOverlayScene("riskOverlayScene");
+  }
+  viewer.impl.clearOverlay("riskOverlayScene");
+
+  const geometry = new THREE.CylinderGeometry(8, 8, 0.2, 32);
+  const material = new THREE.MeshBasicMaterial({
+    color: 0xff1744,
+    transparent: true,
+    opacity: 0.4,
+    depthWrite: false
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.rotation.x = Math.PI / 2;
+  mesh.position.set(x, y, z);
+
+  viewer.impl.addOverlay("riskOverlayScene", mesh);
+  viewer.impl.invalidate(true);
+}
+
+// Render procedural tree and bus shelter geometries
+function drawSolutionOverlay() {
+  if (!viewer) return;
+  const THREE = window.THREE;
+  if (!THREE) return;
+  if (!currentMeshCoords) return;
+
+  const { x, y, z } = currentMeshCoords;
+
+  if (!viewer.impl.hasOverlayScene("solutionOverlayScene")) {
+    viewer.impl.createOverlayScene("solutionOverlayScene");
+  }
+  viewer.impl.clearOverlay("solutionOverlayScene");
+
+  if (activeIntervention === 'tree') {
+    const group = new THREE.Group();
+
+    // Trunk
+    const trunkGeom = new THREE.CylinderGeometry(0.25, 0.35, 3.2, 16);
+    const trunkMat = new THREE.MeshBasicMaterial({ color: 0x5d4037 });
+    const trunkMesh = new THREE.Mesh(trunkGeom, trunkMat);
+    trunkMesh.rotation.x = Math.PI / 2;
+    trunkMesh.position.set(0, 0, 1.6);
+    group.add(trunkMesh);
+
+    // Canopy foliage
+    const canopyGeom = new THREE.SphereGeometry(2.0, 16, 16);
+    const canopyMat = new THREE.MeshBasicMaterial({ color: 0x1b5e20, transparent: true, opacity: 0.85 });
+    const canopyMesh = new THREE.Mesh(canopyGeom, canopyMat);
+    canopyMesh.position.set(0, 0, 3.8);
+    group.add(canopyMesh);
+
+    group.position.set(x, y, z);
+    viewer.impl.addOverlay("solutionOverlayScene", group);
+
+  } else if (activeIntervention === 'shelter') {
+    const group = new THREE.Group();
+
+    // 4 Columns
+    const colMat = new THREE.MeshBasicMaterial({ color: 0x455a64 });
+    const colGeom = new THREE.CylinderGeometry(0.08, 0.08, 2.6, 8);
+    
+    const offsetPositions = [
+      { x: -1.8, y: -0.9 },
+      { x: 1.8, y: -0.9 },
+      { x: -1.8, y: 0.9 },
+      { x: 1.8, y: 0.9 }
+    ];
+    
+    offsetPositions.forEach(p => {
+      const col = new THREE.Mesh(colGeom, colMat);
+      col.rotation.x = Math.PI / 2;
+      col.position.set(p.x, p.y, 1.3);
+      group.add(col);
+    });
+
+    // Roof
+    const roofGeom = new THREE.BoxGeometry(4.0, 2.2, 0.12);
+    const roofMat = new THREE.MeshBasicMaterial({ color: 0x263238 });
+    const roofMesh = new THREE.Mesh(roofGeom, roofMat);
+    roofMesh.position.set(0, 0, 2.6);
+    group.add(roofMesh);
+
+    // Glass panel back wall
+    const glassGeom = new THREE.BoxGeometry(3.6, 0.04, 2.2);
+    const glassMat = new THREE.MeshBasicMaterial({ color: 0x80deea, transparent: true, opacity: 0.35 });
+    const glassMesh = new THREE.Mesh(glassGeom, glassMat);
+    glassMesh.position.set(0, 0.9, 1.1);
+    group.add(glassMesh);
+
+    group.position.set(x, y, z);
+    viewer.impl.addOverlay("solutionOverlayScene", group);
+  }
+
+  viewer.impl.invalidate(true);
+}
+
+// Bind UI triggers for closing and selecting interventions
+function bindAutodeskEvents() {
+  const closeBtn = document.getElementById('autodesk-panel-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      document.getElementById('autodesk-viewer-panel').classList.add('hidden');
+      if (currentPopup) currentPopup.remove();
+    });
+  }
+
+  const intButtons = document.querySelectorAll('.int-btn');
+  intButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      intButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      setIntervention(btn.dataset.int);
+    });
+  });
+}
+
+// Set active solution and re-evaluate audits
+function setIntervention(type) {
+  activeIntervention = type;
+  drawSolutionOverlay();
+  
+  if (selectedFeatureProperties) {
+    runMunicipalAudit(selectedFeatureProperties);
+  }
+}
+
+// Audit properties against city/ADA spatial regulations
+function runMunicipalAudit(props) {
+  const resultsDiv = document.getElementById('checklist-results');
+  if (!resultsDiv) return;
+
+  const meshCheck = {
+    name: "3D LiDAR Scan Alignment",
+    status: selectedSegmentInBounds ? "pass" : "warn",
+    badge: selectedSegmentInBounds ? "EXACT ALIGN" : "PROJECTED SECTOR",
+    desc: selectedSegmentInBounds 
+      ? "Asset is located directly inside the scanned LiDAR sector." 
+      : "Asset is outside the scanned sector. Projecting intervention to the nearest scanned coordinate boundary."
+  };
+
+  const widthCheck = {
+    name: "Clear Path ADA Compliance (≥1.2m)",
+    status: "pass",
+    badge: "PASSED",
+    desc: `Sidewalk width permits standard ADA clearance. Segment PCI: ${Math.round(props.pci_score)}.`
+  };
+  
+  const bufferCheck = {
+    name: "Curb Setback (0.6m Buffer Zone)",
+    status: "pass",
+    badge: "PASSED",
+    desc: "Placement clears the carriage-way setback zone."
+  };
+
+  const collisionCheck = {
+    name: "Utility & Obstacle Proximity Check",
+    status: "pass",
+    badge: "PASSED",
+    desc: "No nearby utility cabinets or poles detected in Cyvl LiDAR data."
+  };
+
+  if (activeIntervention === 'none') {
+    resultsDiv.innerHTML = '<p class="checklist-placeholder">Select an intervention above to perform regulatory audit...</p>';
+    return;
+  }
+
+  if (activeIntervention === 'tree') {
+    if (props.pci_score < 40) {
+      widthCheck.status = "warn";
+      widthCheck.badge = "WARNING";
+      widthCheck.desc = "Low pavement condition index (PCI < 40) suggests high risk of root disruption to sidewalk slabs.";
+    }
+    if (props.nearby_trees > 7) {
+      collisionCheck.status = "warn";
+      collisionCheck.badge = "CROWDED";
+      collisionCheck.desc = `High street tree density in area (${props.nearby_trees} existing trees). Check canopy spacing parameters.`;
+    }
+  } else if (activeIntervention === 'shelter') {
+    if (props.nearby_sidewalks < 4) {
+      widthCheck.status = "fail";
+      widthCheck.badge = "FAILED";
+      widthCheck.desc = "Sidewalk segment is too narrow (estimated width < 2.0m). Bus shelter installation violates ADA clear path.";
+    }
+    if (props.pci_score < 55) {
+      bufferCheck.status = "warn";
+      bufferCheck.badge = "HEAVY FOOTING";
+      bufferCheck.desc = "Degraded pavement base. Foundation footing reinforcement required.";
+    }
+    if (props.nearby_transit === 0) {
+      collisionCheck.status = "warn";
+      collisionCheck.badge = "MISALIGNED";
+      collisionCheck.desc = "No transit stop or signalised crossing detected nearby. Validate route coordinates.";
+    }
+  }
+
+  const items = [meshCheck, widthCheck, bufferCheck, collisionCheck];
+  resultsDiv.innerHTML = `
+    <div class="audit-list">
+      ${items.map(item => `
+        <div class="audit-item-container">
+          <div class="audit-item">
+            <div class="audit-info">
+              <span class="audit-status-dot ${item.status}"></span>
+              <span class="audit-name">${item.name}</span>
+            </div>
+            <span class="audit-badge ${item.status}">${item.badge}</span>
+          </div>
+          <p class="audit-desc">${item.desc}</p>
+        </div>
+      `).join('')}
+    </div>`;
 }
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────

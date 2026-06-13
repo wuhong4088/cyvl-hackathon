@@ -1,0 +1,14 @@
+certifi==2026.5.20
+charset-normalizer==3.4.7
+ezdxf==1.4.4
+fonttools==4.63.0
+idna==3.18
+laspy==2.7.0
+lazrs==0.8.1
+numpy==2.4.6
+pyparsing==3.3.2
+requests==2.34.2
+scipy==1.17.1
+typing_extensions==4.15.0
+urllib3==2.7.0
+open3d
