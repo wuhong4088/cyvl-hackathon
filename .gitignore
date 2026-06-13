@@ -1,0 +1,40 @@
+# ── Raw scan / point cloud data ──────────────────────────────────────────────
+*.laz
+*.las
+*.ply
+*.pcd
+*.parquet
+
+# ── Cyvl SDK cache & raw downloads ───────────────────────────────────────────
+downloads/
+scenes/
+
+# ── Generated output (rebuild with scripts/process_data.py) ──────────────────
+# Keep data/*.geojson and data/*.json — they are needed for the web demo.
+# Only ignore heavy or temporary subdirectories.
+data/download/
+data/sites/
+
+# ── CAD integration generated files ──────────────────────────────────────────
+cadintegration/generated/
+cadintegration/data/site_geometry.cyvl.json
+cadintegration/data/site_geometry.active.json
+cadintegration/data/design_result.active.json
+cadintegration/sampledata/
+generated/
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+
+# ── Node / Vite ───────────────────────────────────────────────────────────────
+node_modules/
+dist/
+.vite/
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
