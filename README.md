@@ -3,6 +3,12 @@
 
 > **Moving cities from reactive maintenance to proactive defense using 3D spatial intelligence.**
 
+### 🌐 Live Demo & QR Code
+Scan the QR code below or visit the live link to check out the application:
+👉 **[Live Demo](https://wuhong4088.github.io/cyvl-hackathon/)**
+
+<img src="qrcode.png" width="220" height="220" alt="SafeRoute AI QR Code" />
+
 ---
 
 ## 🎯 The Problem
