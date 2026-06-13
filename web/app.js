@@ -15,6 +15,7 @@ let weatherChart = null;
 let currentPopup = null;
 let currentSeason = 'winter';  // 'winter' | 'summer'
 let selectedFeatureProperties = null;
+let selectedSegmentInBounds = true;
 let viewer = null;
 let currentMeshCoords = null;
 let activeIntervention = 'none';
@@ -524,7 +525,7 @@ function renderSelectedSites() {
       </div>`;
   }).join('');
 
-  // Click → fly to site
+  // Click → fly to site and open 3D viewer popup
   wrap.querySelectorAll('.selsite-card').forEach(card => {
     card.addEventListener('click', () => {
       const site = sites[+card.dataset.idx];
@@ -535,6 +536,26 @@ function renderSelectedSites() {
         setSeason(site.season);
       }
       map.flyTo({ center: site.coordinates, zoom: 16.5, pitch: 35, duration: 1100 });
+
+      const matchedFeature = data.risk.features.find(f => 
+        Math.abs(f.geometry.coordinates[0] - site.coordinates[0]) < 0.0001 &&
+        Math.abs(f.geometry.coordinates[1] - site.coordinates[1]) < 0.0001
+      );
+      if (matchedFeature) {
+        showRiskPopup(site.coordinates, matchedFeature.properties);
+      } else {
+        showRiskPopup(site.coordinates, {
+          address: site.address,
+          pci_score: site.geometry_context.pci_score,
+          nearby_trees: site.geometry_context.nearby_trees,
+          nearby_sidewalks: site.geometry_context.nearby_sidewalks,
+          nearby_transit: site.geometry_context.nearby_transit_signals,
+          winter_risk: site.risk,
+          summer_risk: site.risk,
+          [currentSeason + '_risk']: site.risk,
+          [currentSeason + '_label']: site.label
+        });
+      }
     });
   });
 }
@@ -590,6 +611,7 @@ function showRiskPopup(coords, props) {
   const x_min = 326443.79, x_max = 327021.93;
   const y_min = 4695226.89, y_max = 4696110.99;
   const inPointCloud = (utm.x >= x_min && utm.x <= x_max && utm.y >= y_min && utm.y <= y_max);
+  selectedSegmentInBounds = inPointCloud;
 
   const panel = document.getElementById('autodesk-viewer-panel');
   if (panel) {
@@ -600,19 +622,37 @@ function showRiskPopup(coords, props) {
     const viewerDiv = document.getElementById('forgeViewerContainer');
     const controlsDiv = document.querySelector('.intervention-controls');
     
-    if (inPointCloud && data.autodeskConfig) {
-      title.textContent = `3D Spatial Planner: ${props.address || 'Unnamed Segment'}`;
-      subtitle.textContent = `PCI: ${Math.round(props.pci_score)} | Risk Score: ${risk.toFixed(2)}`;
+    if (data.autodeskConfig) {
       viewerDiv.style.display = 'block';
       controlsDiv.style.display = 'flex';
       
-      const meshCoords = gpsToMeshCoords(coords[0], coords[1], data.autodeskConfig.center);
-      currentMeshCoords = meshCoords;
+      let targetUtmX = utm.x;
+      let targetUtmY = utm.y;
+      let note = "";
+      
+      if (inPointCloud) {
+        title.textContent = `3D Spatial Planner: ${props.address || 'Unnamed Segment'}`;
+        subtitle.textContent = `PCI: ${Math.round(props.pci_score)} | Risk Score: ${risk.toFixed(2)}`;
+      } else {
+        // Clamp the coords to nearest point cloud boundary
+        targetUtmX = Math.max(x_min, Math.min(x_max, targetUtmX));
+        targetUtmY = Math.max(y_min, Math.min(y_max, targetUtmY));
+        note = " (Nearest 3D sector)";
+        title.textContent = `3D Spatial Planner: ${props.address || 'Unnamed Segment'}${note}`;
+        subtitle.textContent = `PCI: ${Math.round(props.pci_score)} | Risk Score: ${risk.toFixed(2)}`;
+      }
+      
+      const clampedCoords = {
+        x: targetUtmX - data.autodeskConfig.center[0],
+        y: targetUtmY - data.autodeskConfig.center[1],
+        z: 0.0
+      };
+      currentMeshCoords = clampedCoords;
       
       initAutodeskViewer(data.autodeskConfig.token, data.autodeskConfig.urn)
         .then(() => {
           setTimeout(() => {
-            focusViewerOnCoords(meshCoords.x, meshCoords.y, meshCoords.z);
+            focusViewerOnCoords(clampedCoords.x, clampedCoords.y, clampedCoords.z);
           }, 300);
         })
         .catch(err => {
@@ -623,24 +663,9 @@ function showRiskPopup(coords, props) {
       
     } else {
       title.textContent = "3D Spatial Planner";
-      subtitle.textContent = "LiDAR Mesh boundaries exceeded";
+      subtitle.textContent = "Configuration error";
       viewerDiv.style.display = 'none';
       controlsDiv.style.display = 'none';
-      
-      const resultsDiv = document.getElementById('checklist-results');
-      resultsDiv.innerHTML = `
-        <div class="audit-list">
-          <div class="audit-item-container">
-            <div class="audit-item">
-              <div class="audit-info">
-                <span class="audit-status-dot warn"></span>
-                <span class="audit-name">Central Somerville Sector Check</span>
-              </div>
-              <span class="audit-badge warn">OUT OF BOUNDS</span>
-            </div>
-            <p class="audit-desc">Detailed 3D mesh is only generated for the scanned Central Somerville sector. Please select segments on Lowell St, Vernon St, Hinckley St, Ames St, or Cutler St.</p>
-          </div>
-        </div>`;
     }
   }
 }
@@ -765,6 +790,16 @@ function initAutodeskViewer(token, urn) {
         const viewables = doc.getRoot().getDefaultGeometry();
         viewer.loadDocumentNode(doc, viewables).then(() => {
           viewer.setTheme('dark-theme');
+          
+          // Match SafeRoute AI's dark theme colors: rgb(17, 21, 32)
+          viewer.setBackgroundColor(17, 21, 32, 17, 21, 32);
+          viewer.setLightPreset(2); // Dark sky preset
+          
+          // Fit the camera view to the entire model initially so it is fully visible
+          setTimeout(() => {
+            viewer.fitToView();
+          }, 500);
+          
           resolve(viewer);
         });
       }, function(err) {
@@ -929,6 +964,15 @@ function runMunicipalAudit(props) {
   const resultsDiv = document.getElementById('checklist-results');
   if (!resultsDiv) return;
 
+  const meshCheck = {
+    name: "3D LiDAR Scan Alignment",
+    status: selectedSegmentInBounds ? "pass" : "warn",
+    badge: selectedSegmentInBounds ? "EXACT ALIGN" : "PROJECTED SECTOR",
+    desc: selectedSegmentInBounds 
+      ? "Asset is located directly inside the scanned LiDAR sector." 
+      : "Asset is outside the scanned sector. Projecting intervention to the nearest scanned coordinate boundary."
+  };
+
   const widthCheck = {
     name: "Clear Path ADA Compliance (≥1.2m)",
     status: "pass",
@@ -984,7 +1028,7 @@ function runMunicipalAudit(props) {
     }
   }
 
-  const items = [widthCheck, bufferCheck, collisionCheck];
+  const items = [meshCheck, widthCheck, bufferCheck, collisionCheck];
   resultsDiv.innerHTML = `
     <div class="audit-list">
       ${items.map(item => `
