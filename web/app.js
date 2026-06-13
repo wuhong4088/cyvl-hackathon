@@ -12,6 +12,7 @@ const DATA_BASE = '../data/';
 let map;
 let data = {};                 // { risk, trees, sidewalks, curbs, ramps, obstacles, transit, summary, weather }
 let weatherChart = null;
+let currentPopup = null;
 let currentSeason = 'winter';  // 'winter' | 'summer'
 
 // ─── Risk color ramp (shared by both seasons) ────────────────────────────────
@@ -522,8 +523,10 @@ function showRiskPopup(coords, props) {
 
   const div = document.createElement('div');
   div.appendChild(node);
-  new maplibregl.Popup({ closeOnClick: true, maxWidth: '320px' })
+  if (currentPopup) currentPopup.remove();
+  currentPopup = new maplibregl.Popup({ closeOnClick: true, maxWidth: '320px' })
     .setLngLat(coords).setDOMContent(div).addTo(map);
+  currentPopup.on('close', () => { currentPopup = null; });
 }
 
 // ─── Gauge ────────────────────────────────────────────────────────────────────
