@@ -1,14 +1,41 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
-  <head>
-    <meta charset="utf-8" />
-    <meta http-equiv="refresh" content="0; url=web/index.html" />
-    <title>Redirecting to SafeRoute AI...</title>
-    <script type="text/javascript">
-      window.location.href = "web/index.html";
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hackathon 3D Viewer</title>
+    <link rel="stylesheet" href="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.min.css" type="text/css">
+    <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #1a1a1a; }
+        #forgeViewer { width: 100vw; height: 100vh; position: relative; }
+    </style>
+</head>
+<body>
+    <div id="forgeViewer"></div>
+    <script>
+        var viewer;
+        var documentId = 'urn:dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6Y3l2bF9oYWNrYXRob25fYnVja2V0X2VlNjduaDF0bG94b2oydXppaWdnbWRwdmJndXFrb2h3dWVzZ2Y2ZXV5ZDhtOXB4ai9nbG9iYWxfeHl6X3JnYl9pY2d1Xzc2XzEyMDAwXzE0MDAwLm9iag'; 
+        var accessToken = 'eyJhbGciOiJSUzI1NiIsImtpZCI6IlZiakZvUzhQU3lYODQyMV95dndvRUdRdFJEa19SUzI1NiIsInBpLmF0bSI6ImFzc2MifQ.eyJzY29wZSI6WyJidWNrZXQ6Y3JlYXRlIiwiYnVja2V0OnJlYWQiLCJkYXRhOmNyZWF0ZSIsImRhdGE6d3JpdGUiLCJkYXRhOnJlYWQiXSwiY2xpZW50X2lkIjoiZWU2N25oMXRMT1hvajJ1emlpZ2dtRFB2YkdVcUtPaFd1ZXNnRjZlVVlkOE05UFhKIiwiaXNzIjoiaHR0cHM6Ly9kZXZlbG9wZXIuYXBpLmF1dG9kZXNrLmNvbSIsImF1ZCI6Imh0dHBzOi8vYXV0b2Rlc2suY29tIiwianRpIjoiSmdmQTlCMERpbmtKamg4U0xRSm5HSzRnV0ZwUENJbmJOcnpYdTZaMVF0ckxBMXdSUjJ2Tmt1YmlHak16UUF0biIsImV4cCI6MTc4MTM4NjgzOX0.FZkYQBbhC_7KhXIF-6Pw4EGeOZCKdCfihVn1Cg-zT_k2D910wIBpQe3K6lKov2qim_ZSMdthnUHn1kIaqzXPydEdvYMJHBjxtQ71QrQcAUG5mdl0-lovdj9GZPMftgLuZJtgGuP7udaHTAKy8J6JZWZ8I92qw_iraAx9QP11_r2ZM_U5-an-uxsx-jiEBd3QRBnI79D7frSpRiD3J4mOxrD9HoolXYMlVHuoKagf5NdqteaCGR6FH54XTmGYbL3kuNRfvc_d3bF6Dkp4iHMliZO33vgXqI5woqaP5mnNKBw6C4QTgGdTkrvY6ntzKbuwaFI4s_orftpIDzu0SWDJZg';
+
+        var options = {
+            env: 'AutodeskProduction2',
+            api: 'streamingV2',
+            getAccessToken: function(onTokenReady) {
+                onTokenReady(accessToken, 3600);
+            }
+        };
+
+        Autodesk.Viewing.Initializer(options, function() {
+            viewer = new Autodesk.Viewing.GuiViewer3D(document.getElementById('forgeViewer'));
+            viewer.start();
+            Autodesk.Viewing.Document.load(documentId, function(doc) {
+                var viewables = doc.getRoot().getDefaultGeometry();
+                viewer.loadDocumentNode(doc, viewables);
+            }, function(err) {
+                console.error('Load Error:', err);
+            });
+        });
     </script>
-  </head>
-  <body>
-    <p>Redirecting to SafeRoute AI... If you are not redirected automatically, please <a href="web/index.html">click here</a>.</p>
-  </body>
+</body>
 </html>

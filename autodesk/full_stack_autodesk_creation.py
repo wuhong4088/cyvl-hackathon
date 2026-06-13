@@ -56,33 +56,31 @@ def generate_obj_from_laz(laz_path, obj_path, sample_stride=50):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points_3d)
 
-    # 2. The Magic Fix: Voxel Downsampling
+    # 2. The Magic Fix: Voxel Downsampling (sharper density parameters)
     print(f"Points before voxelation: {len(pcd.points):,}")
 
-    # We dynamically increase the voxel cube size until the point count
-    # drops below 150,000, which guarantees a fast generation time.
-    voxel_size = 0.5
+    voxel_size = 0.2
     downpcd = pcd.voxel_down_sample(voxel_size=voxel_size)
 
-    while len(downpcd.points) > 150000:
-        voxel_size += 0.2
+    while len(downpcd.points) > 350000:
+        voxel_size += 0.05
         downpcd = pcd.voxel_down_sample(voxel_size=voxel_size)
 
     print(
-        f"Points after voxelation: {len(downpcd.points):,} (Voxel size used: {voxel_size:.1f})"
+        f"Points after voxelation: {len(downpcd.points):,} (Voxel size used: {voxel_size:.2f})"
     )
     print(f"Elapsed time: {time.time() - start_time:.1f}s")
 
     print("\nEstimating 3D normals...")
     down_start = time.time()
-    downpcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=20))
+    downpcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=25))
     downpcd.orient_normals_consistent_tangent_plane(100)
     print(f"Normals done. ({time.time() - down_start:.1f}s)")
 
-    print("\nRunning Poisson Surface Reconstruction (Depth 8)...")
+    print("\nRunning Poisson Surface Reconstruction (Depth 9 for sharper details)...")
     poisson_start = time.time()
     mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
-        downpcd, depth=8
+        downpcd, depth=9
     )
     print(f"Reconstruction done. ({time.time() - poisson_start:.1f}s)")
 
@@ -95,7 +93,7 @@ def generate_obj_from_laz(laz_path, obj_path, sample_stride=50):
     o3d.io.write_triangle_mesh(obj_path, mesh)
     print(f"Meshing complete! Total Time: {time.time() - start_time:.1f}s")
 
-    return obj_path
+    return obj_path, center
 
 
 def get_access_token():
@@ -255,7 +253,7 @@ def start_local_server(port=8000):
 if __name__ == "__main__":
     try:
         # Pipeline Execution
-        generate_obj_from_laz(INPUT_LAZ, OUTPUT_OBJ, sample_stride=200)
+        _, center = generate_obj_from_laz(INPUT_LAZ, OUTPUT_OBJ, sample_stride=200)
 
         token = get_access_token()
         create_bucket(token)
@@ -264,6 +262,19 @@ if __name__ == "__main__":
 
         if check_translation_status(token, document_urn):
             generate_html_file(token, document_urn)
+
+            # Export autodesk_config.json
+            import json
+            config_data = {
+                "urn": document_urn,
+                "token": token,
+                "center": [float(c) for c in center]
+            }
+            config_path = os.path.join(project_root, "data", "download", "autodesk_config.json")
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(config_data, f, indent=2)
+            print(f"✅ Autodesk configuration exported to {config_path}")
+
             start_local_server(port=8000)
 
     except Exception as e:

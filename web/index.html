@@ -10,6 +10,10 @@
   <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 
+  <!-- Autodesk Viewer v7 -->
+  <link rel="stylesheet" href="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.min.css" type="text/css">
+  <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js"></script>
+
   <!-- Chart.js for mini charts -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 
@@ -210,6 +214,38 @@
   <!-- ── Map ─────────────────────────────────────────────────── -->
   <main class="map-container">
     <div id="map"></div>
+
+    <!-- Autodesk Viewer Panel (Slide-in / Split) -->
+    <div id="autodesk-viewer-panel" class="hidden">
+      <div class="autodesk-panel-header">
+        <div>
+          <h3 id="autodesk-panel-title">3D Spatial Planner</h3>
+          <p id="autodesk-panel-subtitle">Select a segment to load mesh</p>
+        </div>
+        <button id="autodesk-panel-close">&times;</button>
+      </div>
+      <div id="forgeViewerContainer">
+        <div id="forgeViewer"></div>
+      </div>
+      
+      <!-- Spatial Intervention Selector & Checklist -->
+      <div class="intervention-controls">
+        <h4 class="control-section-title">Spatial Interventions</h4>
+        <p class="control-section-hint">Test natural or artificial shading to mitigate risk</p>
+        <div class="intervention-options">
+          <button class="int-btn active" data-int="none">None</button>
+          <button class="int-btn" data-int="tree">🌳 Plant Tree (Natural)</button>
+          <button class="int-btn" data-int="shelter">🚏 Bus Shelter (Artificial)</button>
+        </div>
+        
+        <div class="checklist-section">
+          <h4 class="control-section-title">Municipal Regulation Audit</h4>
+          <div id="checklist-results">
+            <p class="checklist-placeholder">Select a segment to view audit...</p>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Map Legend -->
     <div class="map-legend">
