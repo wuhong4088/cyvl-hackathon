@@ -12,7 +12,7 @@ scenes/
 # ── Generated output (rebuild with scripts/process_data.py) ──────────────────
 # Keep data/*.geojson and data/*.json — they are needed for the web demo.
 # Only ignore heavy or temporary subdirectories.
-data/download/
+data/download/*.zip
 data/sites/
 
 # ── CAD integration generated files ──────────────────────────────────────────
