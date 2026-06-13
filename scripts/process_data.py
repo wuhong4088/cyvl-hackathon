@@ -155,6 +155,22 @@ def load_pavements_from_zip():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
         with zipfile.ZipFile(ZIP_PATH, 'r') as outer_zip:
+            # 1. Read 30ft Pavement Scores to get address mapping
+            pave30_zip_data = outer_zip.read('CityofSomervilleMAMarketingDemo-30ft Pavement Scores.zip')
+            pave30_zip_path = tmpdir_path / 'pave30.zip'
+            pave30_zip_path.write_bytes(pave30_zip_data)
+            with zipfile.ZipFile(pave30_zip_path, 'r') as inner_zip:
+                inner_zip.extractall(tmpdir_path / 'pave30_shp')
+            gdf30 = gpd.read_file(tmpdir_path / 'pave30_shp' / 'layer_zip.shp')
+            
+            seg_to_address = {}
+            for _, row in gdf30.iterrows():
+                seg = row.get("client_seg")
+                addr = row.get("address_st")
+                if seg and addr and addr != "None" and addr != "":
+                    seg_to_address[seg] = addr
+
+            # 2. Read Segment-to-Segment Pavement Scores
             pavement_zip_data = outer_zip.read('CityofSomervilleMAMarketingDemo-Segment-to-Segment Pavement Scores.zip')
             pavement_zip_path = tmpdir_path / 'pavement.zip'
             pavement_zip_path.write_bytes(pavement_zip_data)
@@ -164,13 +180,12 @@ def load_pavements_from_zip():
                 
             gdf = gpd.read_file(tmpdir_path / 'shp' / 'layer_zip.shp')
             
-            pavements = []
+            raw_pavements = []
             for _, row in gdf.iterrows():
                 geom = row.geometry
                 if geom is None or geom.is_empty:
                     continue
                 
-                # Get coordinates
                 if geom.geom_type == 'LineString':
                     coords = list(geom.coords)
                     xs = [c[0] for c in coords]
@@ -183,15 +198,47 @@ def load_pavements_from_zip():
                 if not in_bounds(lon, lat):
                     continue
                     
+                seg = row.get("client_seg")
                 pci = float(row.get("score") or 50.0)
-                pavements.append({
+                raw_pavements.append({
                     "lon": lon, "lat": lat,
-                    "address": str(row.get("client_seg") or "Unnamed segment"),
+                    "seg": seg,
+                    "address": seg_to_address.get(seg),
                     "pci_score": pci,
                     "label": str(row.get("label") or "Medium"),
                     "length_ft": length_ft,
                 })
-            print(f"   ✅ {len(pavements)} pavement segments loaded")
+            
+            # 3. Spatial nearest neighbor interpolation for unmapped segments
+            pavements = []
+            for item in raw_pavements:
+                if item["address"]:
+                    addr = item["address"]
+                else:
+                    # Find nearest segment that has an address
+                    best_dist = float('inf')
+                    best_addr = None
+                    for other in raw_pavements:
+                        if other["address"]:
+                            dist = haversine_m(item["lon"], item["lat"], other["lon"], other["lat"])
+                            if dist < best_dist:
+                                best_dist = dist
+                                best_addr = other["address"]
+                    
+                    if best_dist < 250: # within 250 meters
+                        addr = best_addr
+                    else:
+                        addr = f"{item['lat']:.4f}, {item['lon']:.4f}"
+                
+                pavements.append({
+                    "lon": item["lon"], "lat": item["lat"],
+                    "address": addr,
+                    "pci_score": item["pci_score"],
+                    "label": item["label"],
+                    "length_ft": item["length_ft"],
+                })
+                
+            print(f"   ✅ {len(pavements)} pavement segments loaded (mapped addresses using shapefile + spatial lookup)")
             return pavements
 
 # ─── Weather ──────────────────────────────────────────────────────────────────
