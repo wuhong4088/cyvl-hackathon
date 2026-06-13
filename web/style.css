@@ -681,8 +681,29 @@ body[data-season="summer"] .factor-bar { background: linear-gradient(90deg, #ff6
     gap: 10px;
     justify-content: space-between;
   }
+  /* Pills don't fit in the cramped topbar — float them as a compact,
+     horizontally-scrollable strip under the topbar (top-left of the map). */
   .topbar-pills {
-    display: none; /* Hide pills to save space */
+    display: flex;
+    position: fixed;
+    top: calc(var(--topbar-h) + 8px);
+    left: 10px;
+    max-width: calc(100vw - 150px);   /* keep clear of the top-right legend */
+    z-index: 1002;
+    gap: 6px;
+    flex: none;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .topbar-pills::-webkit-scrollbar { display: none; }
+  .topbar-pills .pill {
+    font-size: 10px;
+    padding: 3px 9px;
+    white-space: nowrap;
+    background: rgba(10, 12, 18, 0.85);
+    backdrop-filter: blur(8px);
+    box-shadow: var(--shadow-sm);
   }
   .topbar-weather {
     display: none; /* Hide weather info on smaller mobile views */
