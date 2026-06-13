@@ -745,18 +745,20 @@ body[data-season="summer"] .factor-bar { background: linear-gradient(90deg, #ff6
     z-index: 1;
   }
 
-  /* Floating Legend */
+  /* Floating Legend — moved to the LEFT (under the pills strip) so it no
+     longer sits on top of the map's top-right zoom (+/−) controls. */
   .map-legend {
-    top: calc(var(--topbar-h) + 12px);
-    right: 10px;
+    top: calc(var(--topbar-h) + 44px);
+    left: 10px;
+    right: auto;
     bottom: auto;
-    left: auto;
     padding: 8px 10px;
-    min-width: 120px;
+    min-width: 110px;
+    max-width: 45vw;
     background: rgba(10, 12, 18, 0.9);
     border-radius: var(--radius-sm);
     box-shadow: var(--shadow-md);
-    max-height: 200px;
+    max-height: 45vh;
     overflow-y: auto;
   }
   .legend-title {
