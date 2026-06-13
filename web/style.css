@@ -274,6 +274,11 @@ html, body {
 }
 
 /* ── Weather Chart ── */
+.chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 130px;
+}
 .chart-note {
   font-size: 9.5px;
   color: var(--text-muted);
