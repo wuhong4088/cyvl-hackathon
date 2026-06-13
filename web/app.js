@@ -6,7 +6,7 @@
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
-const DATA_BASE = '../data/';
+const DATA_BASE = '../data/download/';
 
 // ─── State ───────────────────────────────────────────────────────────────────
 let map;
